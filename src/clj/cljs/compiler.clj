@@ -341,7 +341,7 @@
         (println "*/")))))
 
 (defmethod emit :def
-  [{:keys [name init env doc export]}]
+  [{:keys [name init env doc export dynamic]}]
   (when init
     (emit-comment doc (:jsdoc init))
     (print name)
@@ -700,10 +700,12 @@
                                                   (analyze (assoc env :context :expr) (:init args) sym)))
           export-as (when-let [export-val (-> sym meta :export)]
                       (if (= true export-val) name export-val))
-          doc (or (:doc args) (-> sym meta :doc))]
+          doc (or (:doc args) (-> sym meta :doc))
+          dynamic (-> sym meta :dynamic)]
       (swap! namespaces update-in [(-> env :ns :name) :defs sym]
              (fn [m]
-               (let [m (assoc (or m {}) :name name)]
+               (let [m (merge m {:name name}
+                         (when dynamic {:dynamic dynamic}))]
                  (if-let [line (:line env)]
                    (-> m
                        (assoc :file *cljs-file*)
@@ -712,7 +714,8 @@
       (merge {:env env :op :def :form form
               :name name :doc doc :init init-expr}
              (when init-expr {:children [init-expr]})
-             (when export-as {:export export-as})))))
+             (when export-as {:export export-as})
+             (when dynamic {:dynamic dynamic})))))
 
 (defn- analyze-fn-method [env locals meth]
   (letfn [(uniqify [[p & r]]
