@@ -344,8 +344,12 @@
   [{:keys [name init env doc export dynamic]}]
   (when init
     (emit-comment doc (:jsdoc init)))
-  (print name)
-  (print (str " = " (if init (emits init) "undefined")))
+  (print name "="
+    (let [inits (if init (emits init) "undefined")]
+      (if dynamic
+        (let [syms (with-out-str (emit-constant (symbol name)))]
+          (str "new cljs.core.Var(" syms ", " inits ")"))
+        inits)))
   (when-not (= :expr (:context env))
     (print ";\n"))
   (when export

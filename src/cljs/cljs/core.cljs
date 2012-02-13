@@ -3046,6 +3046,8 @@ reduces them without incurring seq initialization"
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Reference Types ;;;;;;;;;;;;;;;;
 
+(deftype Var [sym root])
+
 (deftype Atom [state meta validator watches]
   IEquiv
   (-equiv [o other] (identical? o other))
