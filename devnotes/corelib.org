@@ -65,7 +65,7 @@ does what?
 * all-ns
 * alter
 * DONE alter-meta!
-* alter-var-root
+* TODO alter-var-root
 * DONE amap
 * DONE ancestors
 * DONE and
@@ -96,6 +96,7 @@ does what?
 * TODO bigint
 * biginteger
 * DONE binding
+* TODO binding-conveyor-fn
 * DONE bit-and
 * DONE bit-and-not
 * DONE bit-clear
@@ -110,9 +111,9 @@ does what?
 * DONE boolean
 * boolean-array
 * booleans
-* bound-fn
-* bound-fn*
-* bound?
+* TODO bound-fn
+* TODO bound-fn*
+* TODO bound?
 * DONE butlast
 * TODO byte
 * byte-array
@@ -258,7 +259,7 @@ macro currently expands into extend call
 * DONE get-in
 * DONE get-method
 * get-proxy-class
-* get-thread-bindings
+* TODO get-thread-bindings
 * DONE get-validator
 * DONE group-by
 * DONE hash
@@ -383,7 +384,7 @@ does what?
 * pmap
 * DONE pop
 * pop!
-* pop-thread-bindings
+* TODO pop-thread-bindings
 * DONE pos?
 * DONE pr
 dunno about printing
@@ -408,7 +409,7 @@ dunno about printing
 * proxy-mappings
 * proxy-name
 * proxy-super
-* push-thread-bindings
+* TODO push-thread-bindings
 * pvalues
 * DONE quot
 * DONE rand
@@ -516,7 +517,7 @@ as macro
 * DONE take-while
 * test
 * the-ns
-* thread-bound?
+* TODO thread-bound?
 * DONE time
 * DONE to-array
 * TODO to-array-2d
@@ -555,9 +556,9 @@ does what?
 * use
 * TODO val
 * DONE vals
-* var-get
-* var-set
-* var?
+* TODO var-get
+* TODO var-set
+* TODO var?
 * DONE vary-meta
 * DONE vec
 * DONE vector
@@ -568,8 +569,8 @@ does what?
 * DONE when-let
 * DONE when-not
 * DONE while
-* with-bindings
-* with-bindings*
+* TODO with-bindings
+* TODO with-bindings*
 * with-in-str
 * with-loading-context
 * TODO with-local-vars
