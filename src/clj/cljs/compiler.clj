@@ -343,12 +343,13 @@
 (defmethod emit :def
   [{:keys [name init env doc export dynamic]}]
   (when init
-    (emit-comment doc (:jsdoc init))
-    (print name)
-    (print (str " = " (emits init)))
-    (when-not (= :expr (:context env)) (print ";\n"))
-    (when export
-      (println (str "goog.exportSymbol('" export "', " name ");")))))
+    (emit-comment doc (:jsdoc init)))
+  (print name)
+  (print (str " = " (if init (emits init) "undefined")))
+  (when-not (= :expr (:context env))
+    (print ";\n"))
+  (when export
+    (println (str "goog.exportSymbol('" export "', " name ");"))))
 
 (defn emit-apply-to
   [{:keys [name params env]}]
