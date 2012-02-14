@@ -272,7 +272,11 @@
 
 (defmethod emit :var
   [{:keys [info env] :as arg}]
-  (emit-wrap env (print (munge (:name info)))))
+  (let [name (munge (:name info))
+        dynamic (get-in info [:var :dynamic])]
+    (emit-wrap env (print (if dynamic
+                            (str "cljs.core._deref.call(null," name ")")
+                            name)))))
 
 (defmethod emit :meta
   [{:keys [expr meta env]}]
