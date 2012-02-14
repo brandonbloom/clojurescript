@@ -3046,60 +3046,6 @@ reduces them without incurring seq initialization"
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Reference Types ;;;;;;;;;;;;;;;;
 
-(deftype Var [sym root]
-  IDeref
-  (-deref [v]
-    (. v -root)) ; TODO: dynamic bindings
-
-  IFn
-  (-invoke [this]
-    (@this))
-  (-invoke [this a]
-    (@this a))
-  (-invoke [this a b]
-    (@this a b))
-  (-invoke [this a b c]
-    (@this a b c))
-  (-invoke [this a b c d]
-    (@this a b c d))
-  (-invoke [this a b c d e]
-    (@this a b c d e))
-  (-invoke [this a b c d e f]
-    (@this a b c d e f))
-  (-invoke [this a b c d e f g]
-    (@this a b c d e f g))
-  (-invoke [this a b c d e f g h]
-    (@this a b c d e f g h))
-  (-invoke [this a b c d e f g h i]
-    (@this a b c d e f g h i))
-  (-invoke [this a b c d e f g h i j]
-    (@this a b c d e f g h i j))
-  (-invoke [this a b c d e f g h i j k]
-    (@this a b c d e f g h i j k))
-  (-invoke [this a b c d e f g h i j k l]
-    (@this a b c d e f g h i j k l))
-  (-invoke [this a b c d e f g h i j k l m]
-    (@this a b c d e f g h i j k l m))
-  (-invoke [this a b c d e f g h i j k l m n]
-    (@this a b c d e f g h i j k l m n))
-  (-invoke [this a b c d e f g h i j k l m n o]
-    (@this a b c d e f g h i j k l m n o))
-  (-invoke [this a b c d e f g h i j k l m n o p]
-    (@this a b c d e f g h i j k l m n o p))
-  (-invoke [this a b c d e f g h i j k l m n o p q]
-    (@this a b c d e f g h i j k l m n o p q))
-  (-invoke [this a b c d e f g h i j k l m n o p q s]
-    (@this a b c d e f g h i j k l m n o p q s))
-  (-invoke [this a b c d e f g h i j k l m n o p q s t]
-    (@this a b c d e f g h i j k l m n o p q s t))
-  ;;TODO: variadic functions don't seem to play nice with protocols
-  ;(-invoke [this a b c d e f g h i j k l m n o p q s t rest]
-  ;  (apply @this a b c d e f g h i j k l m n o p q s t rest))
-
-  IPrintable
-  (-pr-seq [v opts]
-    (list "#'" (str (. v -sym)))))
-
 (deftype Atom [state meta validator watches]
   IEquiv
   (-equiv [o other] (identical? o other))
@@ -3178,6 +3124,82 @@ reduces them without incurring seq initialization"
   (if (= a.state oldval)
     (do (reset! a newval) true)
     false))
+
+;; Internal - do not use!
+(deftype Frame [prev bindings])
+(def dvals (atom (Frame. nil {})))
+
+(deftype Var [sym root]
+  IDeref
+  (-deref [v]
+    (get (. @dvals -bindings) v (. v -root)))
+
+  IFn
+  (-invoke [this]
+    (@this))
+  (-invoke [this a]
+    (@this a))
+  (-invoke [this a b]
+    (@this a b))
+  (-invoke [this a b c]
+    (@this a b c))
+  (-invoke [this a b c d]
+    (@this a b c d))
+  (-invoke [this a b c d e]
+    (@this a b c d e))
+  (-invoke [this a b c d e f]
+    (@this a b c d e f))
+  (-invoke [this a b c d e f g]
+    (@this a b c d e f g))
+  (-invoke [this a b c d e f g h]
+    (@this a b c d e f g h))
+  (-invoke [this a b c d e f g h i]
+    (@this a b c d e f g h i))
+  (-invoke [this a b c d e f g h i j]
+    (@this a b c d e f g h i j))
+  (-invoke [this a b c d e f g h i j k]
+    (@this a b c d e f g h i j k))
+  (-invoke [this a b c d e f g h i j k l]
+    (@this a b c d e f g h i j k l))
+  (-invoke [this a b c d e f g h i j k l m]
+    (@this a b c d e f g h i j k l m))
+  (-invoke [this a b c d e f g h i j k l m n]
+    (@this a b c d e f g h i j k l m n))
+  (-invoke [this a b c d e f g h i j k l m n o]
+    (@this a b c d e f g h i j k l m n o))
+  (-invoke [this a b c d e f g h i j k l m n o p]
+    (@this a b c d e f g h i j k l m n o p))
+  (-invoke [this a b c d e f g h i j k l m n o p q]
+    (@this a b c d e f g h i j k l m n o p q))
+  (-invoke [this a b c d e f g h i j k l m n o p q s]
+    (@this a b c d e f g h i j k l m n o p q s))
+  (-invoke [this a b c d e f g h i j k l m n o p q s t]
+    (@this a b c d e f g h i j k l m n o p q s t))
+  ;;TODO: variadic functions don't seem to play nice with protocols
+  ;(-invoke [this a b c d e f g h i j k l m n o p q s t rest]
+  ;  (apply @this a b c d e f g h i j k l m n o p q s t rest))
+
+  IPrintable
+  (-pr-seq [v opts]
+    (list "#'" (str (. v -sym))))
+
+  IHash
+  (-hash [v]
+    (goog.string/hashCode (pr-str v)))
+
+  ;TODO: IWatchable
+  )
+
+(defn get-thread-bindings []
+  (. @dvals -bindings))
+
+(defn push-thread-bindings [bindings]
+  (swap! dvals #(Frame. % bindings))
+  nil)
+
+(defn pop-thread-bindings []
+  (swap! dvals #(. % -prev))
+  nil)
 
 ;; generic to all refs
 ;; (but currently hard-coded to atom!)

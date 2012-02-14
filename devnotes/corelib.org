@@ -259,7 +259,7 @@ macro currently expands into extend call
 * DONE get-in
 * DONE get-method
 * get-proxy-class
-* TODO get-thread-bindings
+* DONE get-thread-bindings
 * DONE get-validator
 * DONE group-by
 * DONE hash
@@ -384,7 +384,7 @@ does what?
 * pmap
 * DONE pop
 * pop!
-* TODO pop-thread-bindings
+* DONE pop-thread-bindings
 * DONE pos?
 * DONE pr
 dunno about printing
@@ -409,7 +409,7 @@ dunno about printing
 * proxy-mappings
 * proxy-name
 * proxy-super
-* TODO push-thread-bindings
+* DONE push-thread-bindings
 * pvalues
 * DONE quot
 * DONE rand
