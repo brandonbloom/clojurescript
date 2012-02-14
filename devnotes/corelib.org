@@ -65,7 +65,7 @@ does what?
 * all-ns
 * alter
 * DONE alter-meta!
-* TODO alter-var-root
+* DONE alter-var-root
 * DONE amap
 * DONE ancestors
 * DONE and
@@ -113,7 +113,7 @@ does what?
 * booleans
 * DONE bound-fn
 * DONE bound-fn*
-* TODO bound?
+* DONE bound?
 * DONE butlast
 * TODO byte
 * byte-array
@@ -517,7 +517,7 @@ as macro
 * DONE take-while
 * test
 * the-ns
-* TODO thread-bound?
+* DONE thread-bound?
 * DONE time
 * DONE to-array
 * TODO to-array-2d
@@ -556,9 +556,9 @@ does what?
 * use
 * TODO val
 * DONE vals
-* TODO var-get
+* DONE var-get
 * TODO var-set
-* TODO var?
+* DONE var?
 * DONE vary-meta
 * DONE vec
 * DONE vector

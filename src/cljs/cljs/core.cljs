@@ -3190,6 +3190,15 @@ reduces them without incurring seq initialization"
   ;TODO: IWatchable
   )
 
+(defn var? [o]
+  (instance? Var o))
+
+(defn var-get [v]
+  (-deref v))
+
+(defn alter-var-root  [v f & args]
+  (set! (. v -root) (apply f (. v -root) args)))
+
 (defn get-thread-bindings []
   (. @dvals -bindings))
 
@@ -3212,6 +3221,23 @@ reduces them without incurring seq initialization"
   (let [bindings (get-thread-bindings)]
     (fn [& args]
       (apply with-bindings* bindings f args))))
+
+(defn thread-bound? [& vars]
+  (let [bindings (get-thread-bindings)]
+    (every? (fn [v]
+              (when-not (var? v)
+                (throw (js/Error. (str "Expected Var"))))
+              (contains? bindings v))
+            vars)))
+
+(defn bound? [& vars]
+  (let [bindings (get-thread-bindings)]
+    (every? (fn [v]
+              (when-not (var? v)
+                (throw (js/Error. (str "Expected Var"))))
+              (or (not (undefined? (. v -root)))
+                  (contains? bindings v)))
+            vars)))
 
 ;; generic to all refs
 ;; (but currently hard-coded to atom!)
