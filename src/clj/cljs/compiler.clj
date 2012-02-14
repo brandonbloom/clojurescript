@@ -56,16 +56,16 @@
       (symbol ms)
       ms)))
 
-(defn confirm-var-exists [env prefix suffix]
-  (when *cljs-warn-on-undeclared*
-    (let [crnt-ns (-> env :ns :name)]
-      (when (= prefix crnt-ns)
-        (when-not (-> @namespaces crnt-ns :defs suffix)
-          (binding [*out* *err*]
-            (println
-              (str "WARNING: Use of undeclared Var " prefix "/" suffix
-                   (when (:line env)
-                     (str " at line " (:line env)))))))))))
+(defn get-existing-var [env prefix suffix]
+  (if-let [var (-> @namespaces prefix :defs suffix)]
+    var
+    (when (and *cljs-warn-on-undeclared* (= prefix (-> env :ns :name)))
+      (binding [*out* *err*]
+        (println
+          (str "WARNING: Use of undeclared Var " prefix "/" suffix
+               (when (:line env)
+                 (str " at line " (:line env))))))
+       nil)))
 
 (defn resolve-ns-alias [env name]
   (let [sym (symbol name)]
@@ -96,7 +96,7 @@
            (let [ns (namespace sym)
                  ns (if (= "clojure.core" ns) "cljs.core" ns)
                  full-ns (resolve-ns-alias env ns)]
-             (confirm-var-exists env full-ns (symbol (name sym)))
+             (get-existing-var env full-ns (symbol (name sym)))
              (symbol (str full-ns "." (munge (name sym)))))
 
            (.contains s ".")
@@ -107,7 +107,7 @@
                     (if lb
                       (symbol (str (:name lb) suffix))
                       (do
-                        (confirm-var-exists env prefix (symbol suffix))
+                        (get-existing-var env prefix (symbol suffix))
                         sym))))
 
            (get-in @namespaces [(-> env :ns :name) :uses sym])
@@ -117,7 +117,7 @@
            (let [full-ns (if (core-name? env sym)
                            'cljs.core
                            (-> env :ns :name))]
-             (confirm-var-exists env full-ns sym)
+             (get-existing-var env full-ns sym)
              (munge (symbol (str full-ns "." (munge (name sym)))))))]
       {:name nm})))
 
