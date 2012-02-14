@@ -271,10 +271,11 @@
      (when-not (= :expr (:context env#)) (print ";\n"))))
 
 (defmethod emit :var
-  [{:keys [info env] :as arg}]
+  [{:keys [info env deref] :as arg}]
   (let [name (munge (:name info))
-        dynamic (get-in info [:var :dynamic])]
-    (emit-wrap env (print (if dynamic
+        dynamic (get-in info [:var :dynamic])
+        deref (and dynamic (not (false? deref)))]
+    (emit-wrap env (print (if deref
                             (str "cljs.core._deref.call(null," name ")")
                             name)))))
 
@@ -625,7 +626,7 @@
 
 (declare analyze analyze-symbol analyze-seq)
 
-(def specials '#{if def fn* do let* loop* throw try* recur new set! ns deftype* defrecord* . js* & quote})
+(def specials '#{if def fn* do let* loop* throw try* recur new set! ns deftype* defrecord* . js* & quote var})
 
 (def ^:dynamic *recur-frames* nil)
 (def ^:dynamic *loop-lets* nil)
@@ -1029,6 +1030,13 @@
                              inner (:name (resolve-existing-var env (symbol (subs s (+ 2 idx) end))))]
                          (cons (subs s 0 idx) (cons inner (interp (subs s (inc end)))))))))]
       {:env env :op :js :code (apply str (interp form))})))
+
+(defmethod parse 'var
+  [op env [_ sym] name]
+  (let [s (analyze-symbol env sym)]
+    (when-not (get-in s [:info :var :dynamic])
+      (throw (Error. (str "Unable to resolve var: " sym " in this context"))))
+    (merge s {:deref false})))
 
 (defn parse-invoke
   [env [f & args]]
