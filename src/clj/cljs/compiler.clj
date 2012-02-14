@@ -88,38 +88,38 @@
     {:name (js-var sym)}
     (let [s (str sym)
           lb (-> env :locals sym)
-          nm
+          [var nm]
           (cond
-           lb (:name lb)
+           lb [nil (:name lb)]
 
            (namespace sym)
            (let [ns (namespace sym)
                  ns (if (= "clojure.core" ns) "cljs.core" ns)
                  full-ns (resolve-ns-alias env ns)]
-             (get-existing-var env full-ns (symbol (name sym)))
-             (symbol (str full-ns "." (munge (name sym)))))
+             [(get-existing-var env full-ns (symbol (name sym)))
+              (symbol (str full-ns "." (munge (name sym))))])
 
            (.contains s ".")
-           (munge (let [idx (.indexOf s ".")
-                        prefix (symbol (subs s 0 idx))
-                        suffix (subs s idx)
-                        lb (-> env :locals prefix)]
-                    (if lb
-                      (symbol (str (:name lb) suffix))
-                      (do
-                        (get-existing-var env prefix (symbol suffix))
-                        sym))))
+           (let [idx (.indexOf s ".")
+                 prefix (symbol (subs s 0 idx))
+                 suffix (subs s idx)
+                 lb (-> env :locals prefix)]
+             (if lb
+               [nil (munge (symbol (str (:name lb) suffix)))]
+               [(get-existing-var env prefix (symbol suffix))
+                (munge sym)]))
 
            (get-in @namespaces [(-> env :ns :name) :uses sym])
-           (symbol (str (get-in @namespaces [(-> env :ns :name) :uses sym]) "." (munge (name sym))))
+           [nil
+            (symbol (str (get-in @namespaces [(-> env :ns :name) :uses sym]) "." (munge (name sym))))]
 
            :else
            (let [full-ns (if (core-name? env sym)
                            'cljs.core
                            (-> env :ns :name))]
-             (get-existing-var env full-ns sym)
-             (munge (symbol (str full-ns "." (munge (name sym)))))))]
-      {:name nm})))
+             [(get-existing-var env full-ns sym)
+              (munge (symbol (str full-ns "." (munge (name sym)))))]))]
+      {:name nm, :var var})))
 
 (defn resolve-var [env sym]
   (if (= (namespace sym) "js")
