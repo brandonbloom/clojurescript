@@ -3201,6 +3201,18 @@ reduces them without incurring seq initialization"
   (swap! dvals #(. % -prev))
   nil)
 
+(defn with-bindings* [binding-map f & args]
+  (push-thread-bindings binding-map)
+  (try
+    (apply f args)
+    (finally
+      (pop-thread-bindings))))
+
+(defn bound-fn* [f]
+  (let [bindings (get-thread-bindings)]
+    (fn [& args]
+      (apply with-bindings* bindings f args))))
+
 ;; generic to all refs
 ;; (but currently hard-coded to atom!)
 

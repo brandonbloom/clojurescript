@@ -111,8 +111,8 @@ does what?
 * DONE boolean
 * boolean-array
 * booleans
-* TODO bound-fn
-* TODO bound-fn*
+* DONE bound-fn
+* DONE bound-fn*
 * TODO bound?
 * DONE butlast
 * TODO byte
@@ -569,8 +569,8 @@ does what?
 * DONE when-let
 * DONE when-not
 * DONE while
-* TODO with-bindings
-* TODO with-bindings*
+* DONE with-bindings
+* DONE with-bindings*
 * with-in-str
 * with-loading-context
 * TODO with-local-vars

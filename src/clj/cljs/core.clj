@@ -34,8 +34,9 @@
                  :imported)))
 
 (import-macros clojure.core
- [-> ->> .. and assert binding comment cond
+ [-> ->> .. and assert comment cond
   declare defn defn-
+  binding bound-fn with-bindings
   doto
   extend-protocol fn for
   if-let if-not let letfn loop
