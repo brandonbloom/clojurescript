@@ -3046,7 +3046,56 @@ reduces them without incurring seq initialization"
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Reference Types ;;;;;;;;;;;;;;;;
 
-(deftype Var [sym root])
+(deftype Var [sym root]
+  IDeref
+  (-deref [v]
+    (. v -root)) ; TODO: dynamic bindings
+
+  IFn
+  (-invoke [this]
+    (@this))
+  (-invoke [this a]
+    (@this a))
+  (-invoke [this a b]
+    (@this a b))
+  (-invoke [this a b c]
+    (@this a b c))
+  (-invoke [this a b c d]
+    (@this a b c d))
+  (-invoke [this a b c d e]
+    (@this a b c d e))
+  (-invoke [this a b c d e f]
+    (@this a b c d e f))
+  (-invoke [this a b c d e f g]
+    (@this a b c d e f g))
+  (-invoke [this a b c d e f g h]
+    (@this a b c d e f g h))
+  (-invoke [this a b c d e f g h i]
+    (@this a b c d e f g h i))
+  (-invoke [this a b c d e f g h i j]
+    (@this a b c d e f g h i j))
+  (-invoke [this a b c d e f g h i j k]
+    (@this a b c d e f g h i j k))
+  (-invoke [this a b c d e f g h i j k l]
+    (@this a b c d e f g h i j k l))
+  (-invoke [this a b c d e f g h i j k l m]
+    (@this a b c d e f g h i j k l m))
+  (-invoke [this a b c d e f g h i j k l m n]
+    (@this a b c d e f g h i j k l m n))
+  (-invoke [this a b c d e f g h i j k l m n o]
+    (@this a b c d e f g h i j k l m n o))
+  (-invoke [this a b c d e f g h i j k l m n o p]
+    (@this a b c d e f g h i j k l m n o p))
+  (-invoke [this a b c d e f g h i j k l m n o p q]
+    (@this a b c d e f g h i j k l m n o p q))
+  (-invoke [this a b c d e f g h i j k l m n o p q s]
+    (@this a b c d e f g h i j k l m n o p q s))
+  (-invoke [this a b c d e f g h i j k l m n o p q s t]
+    (@this a b c d e f g h i j k l m n o p q s t))
+  ;;TODO: variadic functions don't seem to play nice with protocols
+  ;(-invoke [this a b c d e f g h i j k l m n o p q s t rest]
+  ;  (apply @this a b c d e f g h i j k l m n o p q s t rest))
+  )
 
 (deftype Atom [state meta validator watches]
   IEquiv
