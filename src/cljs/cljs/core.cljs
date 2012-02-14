@@ -3095,7 +3095,10 @@ reduces them without incurring seq initialization"
   ;;TODO: variadic functions don't seem to play nice with protocols
   ;(-invoke [this a b c d e f g h i j k l m n o p q s t rest]
   ;  (apply @this a b c d e f g h i j k l m n o p q s t rest))
-  )
+
+  IPrintable
+  (-pr-seq [v opts]
+    (list "#'" (str (. v -sym)))))
 
 (deftype Atom [state meta validator watches]
   IEquiv
