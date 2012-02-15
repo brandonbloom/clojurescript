@@ -3136,9 +3136,12 @@ reduces them without incurring seq initialization"
 (defn get-thread-bindings []
   (. @dvals -bindings))
 
-(deftype Var [sym root watches]
+(deftype Var [sym root validator watches]
   IVar
   (-bind-root [v new-root]
+    (when-let [validate (.-validator v)]
+      (assert (validate new-root)
+              (str "Validator rejected " (pr-str v) " state")))
     (let [old-root (. v -root)]
       (set! (. v -root) new-root)
       (-notify-watches v old-root new-root))
@@ -3215,7 +3218,7 @@ reduces them without incurring seq initialization"
 ;; Internal - do not use!
 (defn var_ [v sym root]
   (if (undefined? v)
-    (Var. sym root nil)
+    (Var. sym root nil nil)
     (do
       (when-not (undefined? root)
         (-bind-root v root))
@@ -3233,6 +3236,10 @@ reduces them without incurring seq initialization"
     (-bind-root v new-root)))
 
 (defn push-thread-bindings [bindings]
+  (doseq [[v value] bindings]
+    (when-let [validate (.-validator v)]
+      (assert (validate value)
+              (str "Validator rejected " (pr-str v) " state"))))
   (swap! dvals #(Frame. % bindings))
   nil)
 
@@ -3269,7 +3276,7 @@ reduces them without incurring seq initialization"
             vars)))
 
 ;; generic to all refs
-;; (but currently hard-coded to atom!)
+;; (but currently hard-coded to atom and/or var!)
 
 (defn deref
   [o]
@@ -3283,6 +3290,8 @@ reduces them without incurring seq initialization"
   is not acceptable to the new validator, an Error will be thrown and the
   validator will not be changed."
   [iref val]
+  ;BUG: Does not validate current state.
+  ;TODO: Create IRef with a -validate method, wrap validation in try/catch
   (set! (.-validator iref) val))
 
 (defn get-validator
