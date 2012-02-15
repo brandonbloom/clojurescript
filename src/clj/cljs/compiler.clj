@@ -353,7 +353,7 @@
     (let [inits (if init (emits init) "undefined")]
       (if dynamic
         (let [syms (with-out-str (emit-constant (symbol name)))]
-          (str "new cljs.core.Var(" syms ", " inits ")"))
+          (str "cljs.core.var_(" name ", " syms ", " inits ")"))
         inits)))
   (when-not (= :expr (:context env))
     (print ";\n"))

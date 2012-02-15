@@ -197,6 +197,10 @@
   (-add-watch [this key f])
   (-remove-watch [this key]))
 
+(defprotocol IVar
+  (-bind-root [v root])
+  (-root? [v]))
+
 ;;;;;;;;;;;;;;;;;;; fundamentals ;;;;;;;;;;;;;;;
 (defn identical?
   "Tests if 2 arguments are the same object"
@@ -3129,10 +3133,22 @@ reduces them without incurring seq initialization"
 (deftype Frame [prev bindings])
 (def dvals (atom (Frame. nil {})))
 
-(deftype Var [sym root]
+(defn get-thread-bindings []
+  (. @dvals -bindings))
+
+(deftype Var [sym root watches]
+  IVar
+  (-bind-root [v new-root]
+    (let [old-root (. v -root)]
+      (set! (. v -root) new-root)
+      (-notify-watches v old-root new-root))
+    new-root)
+  (-root? [v]
+    (not (undefined? (. v -root))))
+
   IDeref
   (-deref [v]
-    (get (. @dvals -bindings) v (. v -root)))
+    (get (get-thread-bindings) v (. v -root)))
 
   IFn
   (-invoke [this]
@@ -3183,12 +3199,27 @@ reduces them without incurring seq initialization"
   (-pr-seq [v opts]
     (list "#'" (str (. v -sym))))
 
+  IWatchable
+  (-notify-watches [this oldval newval]
+    (doseq [[key f] watches]
+      (f key this oldval newval)))
+  (-add-watch [this key f]
+    (set! (.-watches this) (assoc watches key f)))
+  (-remove-watch [this key]
+    (set! (.-watches this) (dissoc watches key)))
+
   IHash
   (-hash [v]
-    (goog.string/hashCode (pr-str v)))
+    (goog.string/hashCode (pr-str v))))
 
-  ;TODO: IWatchable
-  )
+;; Internal - do not use!
+(defn var_ [v sym root]
+  (if (undefined? v)
+    (Var. sym root nil)
+    (do
+      (when-not (undefined? root)
+        (-bind-root v root))
+      v)))
 
 (defn var? [o]
   (instance? Var o))
@@ -3197,10 +3228,9 @@ reduces them without incurring seq initialization"
   (-deref v))
 
 (defn alter-var-root  [v f & args]
-  (set! (. v -root) (apply f (. v -root) args)))
-
-(defn get-thread-bindings []
-  (. @dvals -bindings))
+  (let [old-root (. v -root)
+        new-root (apply f old-root args)]
+    (-bind-root v new-root)))
 
 (defn push-thread-bindings [bindings]
   (swap! dvals #(Frame. % bindings))
@@ -3235,8 +3265,7 @@ reduces them without incurring seq initialization"
     (every? (fn [v]
               (when-not (var? v)
                 (throw (js/Error. (str "Expected Var"))))
-              (or (not (undefined? (. v -root)))
-                  (contains? bindings v)))
+              (or (-root? v) (contains? bindings v)))
             vars)))
 
 ;; generic to all refs
