@@ -346,13 +346,13 @@
         (println "*/")))))
 
 (defmethod emit :def
-  [{:keys [name init env doc export dynamic]}]
+  [{:keys [name sym init env doc export dynamic]}]
   (when init
     (emit-comment doc (:jsdoc init)))
   (print name "="
     (let [inits (if init (emits init) "undefined")]
       (if dynamic
-        (let [syms (with-out-str (emit-constant (symbol name)))]
+        (let [syms (with-out-str (emit-constant sym))]
           (str "cljs.core.var_(" name ", " syms ", " inits ")"))
         inits)))
   (when-not (= :expr (:context env))
@@ -711,8 +711,10 @@
           export-as (when-let [export-val (-> sym meta :export)]
                       (if (= true export-val) name export-val))
           doc (or (:doc args) (-> sym meta :doc))
-          dynamic (-> sym meta :dynamic)]
-      (swap! namespaces update-in [(-> env :ns :name) :defs sym]
+          dynamic (-> sym meta :dynamic)
+          ns (-> env :ns :name)
+          qualified (symbol (str ns) (str sym))]
+      (swap! namespaces update-in [ns :defs sym]
              (fn [m]
                (let [m (merge m {:name name}
                          (when dynamic {:dynamic dynamic}))]
@@ -721,7 +723,7 @@
                        (assoc :file *cljs-file*)
                        (assoc :line line))
                    m))))
-      (merge {:env env :op :def :form form
+      (merge {:env env :op :def :sym qualified :form form
               :name name :doc doc :init init-expr}
              (when init-expr {:children [init-expr]})
              (when export-as {:export export-as})
