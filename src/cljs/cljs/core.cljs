@@ -3050,6 +3050,10 @@ reduces them without incurring seq initialization"
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Reference Types ;;;;;;;;;;;;;;;;
 
+(defn deref
+  [o]
+  (-deref o))
+
 (deftype Atom [state meta validator watches]
   IEquiv
   (-equiv [o other] (identical? o other))
@@ -3277,10 +3281,6 @@ reduces them without incurring seq initialization"
 
 ;; generic to all refs
 ;; (but currently hard-coded to atom and/or var!)
-
-(defn deref
-  [o]
-  (-deref o))
 
 (defn set-validator!
   "Sets the validator-fn for an atom. validator-fn must be nil or a
