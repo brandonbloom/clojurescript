@@ -8,3 +8,5 @@ closure
 /coreadvanced.js
 /coresimple.js
 /out
+clojurescript_release_*
+.repl
