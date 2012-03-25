@@ -1,0 +1,32 @@
+#!/bin/sh
+
+if [ "$CLOJURESCRIPT_HOME" = "" ]; then
+  CLOJURESCRIPT_HOME="`dirname $0`/.."
+fi
+
+CLJSC_CP=''
+for next in lib/*: src/clj: src/cljs: test/cljs; do
+  CLJSC_CP=$CLJSC_CP$CLOJURESCRIPT_HOME'/'$next
+done
+
+java -server -cp $CLJSC_CP clojure.main - <<EOF
+;; Compiling twitter example
+(use '[cljs.closure :only (build)])
+(require '[clojure.java.io :as io])
+(def opts {:output-to "samples/twitterbuzz/twitterbuzz.js"
+           :output-dir "samples/twitterbuzz/out"})
+(defn rm-r [path]
+  (doseq [file (reverse (file-seq (io/file path)))]
+    (.delete file)))
+(defn go []
+  (rm-r "samples/twitterbuzz/out/twitterbuzz") ;NOTE Not deleting compiled deps
+  (build "samples/twitterbuzz/src" opts))
+(go)
+EOF
+
+if [[ $? -eq 0 ]]; then
+  cp samples/twitterbuzz/out/twitterbuzz/* ~/Projects/twitterbuzz/
+  cd ~/Projects/twitterbuzz/
+  sed -e 's/__[0-9][0-9]*/__XYZ/g' -i '' *
+  git dt
+fi
