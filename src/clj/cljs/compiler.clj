@@ -39,6 +39,7 @@
 (def ^:dynamic *cljs-ns* 'cljs.user)
 (def ^:dynamic *cljs-file* nil)
 (def ^:dynamic *cljs-warn-on-undeclared* false)
+(def ^:dynamic *mapping* nil)
 
 (defmacro ^:private debug-prn
   [& args]
@@ -196,6 +197,7 @@
 (defn emitln [& xs]
   (apply emitx xs)
   (println)
+  (swap! *mapping* #(when % (conj % [])))
   nil)
 
 (defmulti emit-constant class)
@@ -1198,6 +1200,29 @@
   [^java.io.File f]
   (.mkdirs (.getParentFile (.getCanonicalFile f))))
 
+(defn print-source-map [src obj mapping]
+  (println ")]}'") ; Prevents XSSI attacks
+  (println "{")
+  (println "\"version\": 3,")
+  (print "\"file\": ")
+  (emit-constant (.getName ^java.io.File obj))
+  (println ",")
+  (print "\"sources\": [")
+  (emit-constant (str "/src/twitterbuzz/" (.getName ^java.io.File src)))  ; TODO: Compute correct path from src-root
+  (println "],")
+  (print "\"mappings\": \"")
+  (doseq [m mapping]
+    (print ";"))
+  (println "\"")
+  (println "}"))
+
+(defn emit-source-mapping [src obj mapping]
+  (let [map-file (io/file (str obj ".map"))]
+    (println (str "//@ sourceMappingURL=" (.getName ^java.io.File map-file)))
+    (with-open [out ^java.io.Writer (io/make-writer map-file {})]
+      (binding [*out* out]
+        (print-source-map src obj mapping)))))
+
 (defmacro with-core-cljs
   "Ensure that core.cljs has been loaded."
   [& body]
@@ -1210,21 +1235,25 @@
     (with-open [out ^java.io.Writer (io/make-writer dest {})]
       (binding [*out* out
                 *cljs-ns* 'cljs.user
-                *cljs-file* (.getPath ^java.io.File src)]
-        (loop [forms (forms-seq src)
-               ns-name nil
-               deps nil]
-          (if (seq forms)
-            (let [env {:ns (@namespaces *cljs-ns*) :context :statement :locals {}}
-                  ast (analyze env (first forms))]
-              (do (emit ast)
-                  (if (= (:op ast) :ns)
-                    (recur (rest forms) (:name ast) (merge (:uses ast) (:requires ast)))
-                    (recur (rest forms) ns-name deps))))
-            {:ns (or ns-name 'cljs.user)
-             :provides [ns-name]
-             :requires (if (= ns-name 'cljs.core) (set (vals deps)) (conj (set (vals deps)) 'cljs.core))
-             :file dest}))))))
+                *cljs-file* (.getPath ^java.io.File src)
+                *mapping* (atom [[]])]
+        (let [ret
+          (loop [forms (forms-seq src)
+                 ns-name nil
+                 deps nil]
+            (if (seq forms)
+              (let [env {:ns (@namespaces *cljs-ns*) :context :statement :locals {}}
+                    ast (analyze env (first forms))]
+                (do (emit ast)
+                    (if (= (:op ast) :ns)
+                      (recur (rest forms) (:name ast) (merge (:uses ast) (:requires ast)))
+                      (recur (rest forms) ns-name deps))))
+              {:ns (or ns-name 'cljs.user)
+               :provides [ns-name]
+               :requires (if (= ns-name 'cljs.core) (set (vals deps)) (conj (set (vals deps)) 'cljs.core))
+               :file dest}))]
+          (emit-source-mapping src dest @*mapping*)
+          ret)))))
 
 (defn requires-compilation?
   "Return true if the src file requires compilation."
