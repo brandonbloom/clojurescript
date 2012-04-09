@@ -39,6 +39,7 @@
 (def ^:dynamic *cljs-ns* 'cljs.user)
 (def ^:dynamic *cljs-file* nil)
 (def ^:dynamic *cljs-warn-on-undeclared* false)
+(def ^:dynamic *cljs-warn-on-redef* true)
 (def ^:dynamic *position* nil)
 
 (defmacro ^:private debug-prn
@@ -86,72 +87,71 @@
 
 (defn resolve-existing-var [env sym]
   (if (= (namespace sym) "js")
-    {:name (js-var sym)}
+    {:name (js-var sym) :ns 'js}
     (let [s (str sym)
-          lb (-> env :locals sym)
-          nm
-          (cond
-           lb (:name lb)
+          lb (-> env :locals sym)]
+      (cond
+       lb lb
 
-           (namespace sym)
-           (let [ns (namespace sym)
-                 ns (if (= "clojure.core" ns) "cljs.core" ns)
-                 full-ns (resolve-ns-alias env ns)]
-             (confirm-var-exists env full-ns (symbol (name sym)))
-             (symbol (str full-ns "." (munge (name sym)))))
+       (namespace sym)
+       (let [ns (namespace sym)
+             ns (if (= "clojure.core" ns) "cljs.core" ns)
+             full-ns (resolve-ns-alias env ns)]
+         (confirm-var-exists env full-ns (symbol (name sym)))
+         {:name (symbol (str full-ns "." (munge (name sym))))
+          :ns full-ns})
 
-           (.contains s ".")
-           (munge (let [idx (.indexOf s ".")
-                        prefix (symbol (subs s 0 idx))
-                        suffix (subs s idx)
-                        lb (-> env :locals prefix)]
-                    (if lb
-                      (symbol (str (:name lb) suffix))
-                      (do
-                        (confirm-var-exists env prefix (symbol suffix))
-                        sym))))
+       (.contains s ".")
+       (let [idx (.indexOf s ".")
+             prefix (symbol (subs s 0 idx))
+             suffix (subs s idx)
+             lb (-> env :locals prefix)]
+         (if lb
+           {:name (munge (symbol (str (:name lb) suffix)))}
+           (do
+             (confirm-var-exists env prefix (symbol suffix))
+             {:name (munge sym) :ns prefix})))
 
-           (get-in @namespaces [(-> env :ns :name) :uses sym])
-           (symbol (str (get-in @namespaces [(-> env :ns :name) :uses sym]) "." (munge (name sym))))
+       (get-in @namespaces [(-> env :ns :name) :uses sym])
+       {:name (symbol (str (get-in @namespaces [(-> env :ns :name) :uses sym]) "." (munge (name sym))))
+        :ns (-> env :ns :name)}
 
-           :else
-           (let [full-ns (if (core-name? env sym)
-                           'cljs.core
-                           (-> env :ns :name))]
-             (confirm-var-exists env full-ns sym)
-             (munge (symbol (str full-ns "." (munge (name sym)))))))]
-      {:name nm})))
+       :else
+       (let [full-ns (if (core-name? env sym)
+                       'cljs.core
+                       (-> env :ns :name))]
+         (confirm-var-exists env full-ns sym)
+         {:name (munge (symbol (str full-ns "." (munge (name sym)))))
+          :ns full-ns})))))
 
 (defn resolve-var [env sym]
   (if (= (namespace sym) "js")
     {:name (js-var sym)}
     (let [s (str sym)
-          lb (-> env :locals sym)
-          nm
-          (cond
-           lb (:name lb)
+          lb (-> env :locals sym)]
+      (cond
+       lb lb
 
-           (namespace sym)
-           (let [ns (namespace sym)
-                 ns (if (= "clojure.core" ns) "cljs.core" ns)]
-             (symbol (str (resolve-ns-alias env ns) "." (munge (name sym)))))
+       (namespace sym)
+       (let [ns (namespace sym)
+             ns (if (= "clojure.core" ns) "cljs.core" ns)]
+         {:name (symbol (str (resolve-ns-alias env ns) "." (munge (name sym))))})
 
-           (.contains s ".")
-           (munge (let [idx (.indexOf s ".")
-                        prefix (symbol (subs s 0 idx))
-                        suffix (subs s idx)
-                        lb (-> env :locals prefix)]
-                    (if lb
-                      (symbol (str (:name lb) suffix))
-                      sym)))
+       (.contains s ".")
+       (let [idx (.indexOf s ".")
+             prefix (symbol (subs s 0 idx))
+             suffix (subs s idx)
+             lb (-> env :locals prefix)]
+         (if lb
+           {:name (munge (symbol (str (:name lb) suffix)))}
+           {:name (munge sym)}))
 
-           :else
-           (munge (symbol (str
-                           (if (core-name? env sym)
-                             'cljs.core
-                             (-> env :ns :name))
-                           "." (munge (name sym))))))]
-      {:name nm})))
+       :else
+       (let [s (str (if (core-name? env sym)
+                      'cljs.core
+                      (-> env :ns :name))
+                    "." (munge (name sym)))]
+         {:name (munge (symbol s))})))))
 
 (defn- comma-sep [xs]
   (interpose "," xs))
@@ -162,7 +162,6 @@
       ; Handle printable escapes before ASCII
       34 "\\\""
       92 "\\\\"
-      47 "\\/"
       ; Handle non-printable escapes
       8 "\\b"
       12 "\\f"
@@ -265,7 +264,7 @@
 
 (defmethod emit-constant clojure.lang.IPersistentVector [x]
   (emit-meta-constant x
-    (concat ["(new cljs.core.Vector(null, ["]
+    (concat ["cljs.core.vec(["]
             (comma-sep (map #(fn [] (emit-constant %)) x))
             ["]))"])))
 
@@ -322,7 +321,7 @@
 (defmethod emit :vector
   [{:keys [children env]}]
   (emit-wrap env
-    (emitx "cljs.core.Vector.fromArray(["
+    (emitx "cljs.core.PersistentVector.fromArray(["
            (comma-sep children) "])")))
 
 (defmethod emit :set
@@ -369,13 +368,15 @@
 
 (defmethod emit :def
   [{:keys [name init env doc export]}]
-  (when init
-    (emit-comment doc (:jsdoc init))
-    (emitx name)
-    (emitx " = " init)
-    (when-not (= :expr (:context env)) (emitln ";"))
-    (when export
-      (emitln "goog.exportSymbol('" export "', " name ");"))))
+  (if init
+    (do
+      (emit-comment doc (:jsdoc init))
+      (emitx name)
+      (emitx " = " init)
+      (when-not (= :expr (:context env)) (emitln ";"))
+      (when export
+        (emitln "goog.exportSymbol('" export "', " name ");")))
+    (println "void 0;")))
 
 (defn emit-apply-to
   [{:keys [name params env]}]
@@ -734,7 +735,19 @@
         args (apply pfn form)
         sym (:sym args)]
     (assert (not (namespace sym)) "Can't def ns-qualified name")
-    (let [name (munge (:name (resolve-var (dissoc env :locals) sym)))
+    (let [env (let [ns-name (-> env :ns :name)]
+                (if (or (and (not= ns-name 'cljs.core)
+                             (core-name? env sym))
+                        (get-in @namespaces [ns-name :uses sym]))
+                  (let [ev (resolve-existing-var (dissoc env :locals) sym)]
+                    (when *cljs-warn-on-redef*
+                      (binding [*out* *err*]
+                        (println "WARNING:" sym "already refers to:" (symbol (str (:ns ev)) (str sym))
+                                 "being replaced by:" (symbol (str ns-name) (str sym)))))
+                    (swap! namespaces update-in [ns-name :excludes] conj sym)
+                    (update-in env [:ns :excludes] conj sym))
+                  env))
+          name (munge (:name (resolve-var (dissoc env :locals) sym)))
           init-expr (when (contains? args :init) (disallowing-recur
                                                   (analyze (assoc env :context :expr) (:init args) sym)))
           export-as (when-let [export-val (-> sym meta :export)]
@@ -824,7 +837,7 @@
         {:keys [statements ret children]}
         (binding [*recur-frames* (if recur-frame (cons recur-frame *recur-frames*) *recur-frames*)
                   *loop-lets* (cond
-                               is-loop (or *loop-lets* ()) 
+                               is-loop (or *loop-lets* ())
                                *loop-lets* (cons {:names (vec (map :name bes))} *loop-lets*))]
           (analyze-block (assoc env :context (if (= :expr context) :return context)) exprs))]
     {:env encl-env :op :let :loop is-loop
@@ -967,7 +980,7 @@
   [(cond (nil? target) ::error
          :default      ::expr)
    (cond (property-symbol? member) ::property
-         (symbol? member)          ::symbol    
+         (symbol? member)          ::symbol
          (seq? member)             ::list
          :default                  ::error)
    (cond (nil? args) ()
@@ -1002,9 +1015,6 @@
 ;; (. o m)
 (defmethod build-dot-form [::expr ::symbol ()]
   [[target meth args]]
-  (debug-prn "WARNING: The form " (list '. target meth)
-             " is no longer a property access. Maybe you meant "
-             (list '. target (symbol (str '- meth))) " instead?")
   (build-method-call target meth args))
 
 ;; (. o (m))
@@ -1077,7 +1087,8 @@
 (defn get-expander [sym env]
   (let [mvar
         (when-not (or (-> env :locals sym)        ;locals hide macros
-                      (-> env :ns :excludes sym))
+                      (and (-> env :ns :excludes sym)
+                           (not (-> env :ns :uses-macros sym))))
           (if-let [nstr (namespace sym)]
             (when-let [ns (cond
                            (= "clojure.core" nstr) (find-ns 'cljs.core)

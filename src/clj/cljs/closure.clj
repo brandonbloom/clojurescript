@@ -292,11 +292,24 @@
             state (reduce dependency-order-visit state deps)]
         (assoc state :order (conj (:order state) file))))))
 
+(defn- pack-string [s]
+  (if (string? s)
+    {:provides (-provides s)
+     :requires (-requires s)
+     :file (str "from_source_" (gensym) ".clj")
+     ::original s}
+    s))
+
+(defn- unpack-string [m]
+  (or (::original m) m))
+
 (defn dependency-order
   "Topologically sort a collection of dependencies."
   [coll]
-  (let [state (build-index coll)]
-    (distinct (:order (reduce dependency-order-visit (assoc state :order []) (keys state))))))
+  (let [state (build-index (map pack-string coll))]
+    (map unpack-string
+         (distinct
+          (:order (reduce dependency-order-visit (assoc state :order []) (keys state)))))))
 
 ;; Compile
 ;; =======
@@ -347,12 +360,11 @@
 
 (defn compile-dir
   "Recursively compile all cljs files under the given source
-  directory. Return a list of JavaScriptFiles in dependency order."
+  directory. Return a list of JavaScriptFiles."
   [^File src-dir opts]
   (let [out-dir (output-directory opts)]
-    (dependency-order
-     (map compiled-file
-          (comp/compile-root src-dir out-dir)))))
+    (map compiled-file
+         (comp/compile-root src-dir out-dir))))
 
 (defn path-from-jarfile
   "Given the URL of a file within a jar, return the path of the file
@@ -514,8 +526,8 @@
 
 (defn js-dependencies
   "Given a sequence of Closure namespace strings, return the list of
-  all dependencies in dependency order. The returned list includes all
-  Google and third-party library dependencies.
+  all dependencies. The returned list includes all Google and
+  third-party library dependencies.
 
   Third-party libraries are configured using the :libs option where
   the value is a list of directories containing third-party
@@ -531,7 +543,7 @@
           (recur (into (rest requires) new-req)
                  (into visited new-req)
                  (conj deps node)))
-        (cons (get index "goog/base.js") (dependency-order deps))))))
+        (remove nil? deps)))))
 
 (comment
   ;; find dependencies
@@ -549,11 +561,10 @@
 
 (defn cljs-dependencies
   "Given a list of all required namespaces, return a list of
-  IJavaScripts which are the cljs dependencies in dependency
-  order. The returned list will not only include the explicitly
-  required files but any transitive depedencies as well. JavaScript
-  files will be compiled to the working directory if they do not
-  already exist.
+  IJavaScripts which are the cljs dependencies. The returned list will
+  not only include the explicitly required files but any transitive
+  depedencies as well. JavaScript files will be compiled to the
+  working directory if they do not already exist.
 
   Only load dependencies from the classpath."
   [opts requires]
@@ -574,7 +585,7 @@
             (recur (into (rest required-files) new-req)
                    (into visited new-req)
                    (conj js-deps js)))
-          (dependency-order js-deps))))))
+          (remove nil? js-deps))))))
 
 (comment
   ;; only get cljs deps
@@ -593,13 +604,15 @@
   (let [requires (mapcat -requires inputs)
         required-cljs (remove (set inputs) (cljs-dependencies opts requires))
         required-js (js-dependencies opts (set (concat (mapcat -requires required-cljs) requires)))]
-    (concat (map #(-> (javascript-file (:foreign %)
-                                       (or (:url %) (io/resource (:file %)))
-                                       (:provides %)
-                                       (:requires %))
-                      (assoc :group (:group %))) required-js)
-            required-cljs
-            inputs)))
+    (cons (javascript-file nil (io/resource "goog/base.js") ["goog"] nil)
+          (dependency-order
+           (concat (map #(-> (javascript-file (:foreign %)
+                                              (or (:url %) (io/resource (:file %)))
+                                              (:provides %)
+                                              (:requires %))
+                             (assoc :group (:group %))) required-js)
+                   required-cljs
+                   inputs)))))
 
 (comment
   ;; add dependencies to literal js

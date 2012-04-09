@@ -160,6 +160,12 @@
   (assert (= "baz" (name :foo/bar/baz)))
   ;(assert (= "foo/bar" (namespace :foo/bar/baz)))
 
+  ; str
+  (assert (= ":hello" (str :hello)))
+  (assert (= "hello" (str 'hello)))
+  (assert (= "hello:world" (str "hello" :world)))
+  (assert (= ":helloworld" (str :hello 'world)))
+
   (assert (= {:a :b} (get {[1 2 3] {:a :b}, 4 5} [1 2 3])))
   (assert (= :a (nth [:a :b :c :d] 0)))
   (assert (= :a (nth [:a :b :c :d] 0.1)) )
@@ -175,8 +181,16 @@
   (assert (= (hash-map :foo 5)
              (assoc (cljs.core.ObjMap. nil (array) (js-obj)) :foo 5)))
 
+  (assert (= "\"asdf\"" (pr-str "asdf")))
   (assert (= "[1 true {:a 2, :b 42} #<Array [3, 4]>]"
              (pr-str [1 true {:a 2 :b 42} (array 3 4)])))
+
+  (assert (= "\"asdf\"\n" (prn-str "asdf")))
+  (assert (= "[1 true {:a 2, :b 42} #<Array [3, 4]>]\n"
+             (prn-str [1 true {:a 2 :b 42} (array 3 4)])))
+
+  (assert (= "asdf" (print-str "asdf")))
+  (assert (= "asdf\n" (println-str "asdf")))
 
   ;;this fails in v8 - why?
   ;(assert (= "symbol\"'string" (pr-str (str 'symbol \" \' "string"))))
@@ -601,13 +615,17 @@
     (assert (= @s (reverse v))))
 
   ;; delay
-  ;; (let [d (delay (. (js/Date.) (getTime)))]
-  ;;   (assert (false? (realized? d)))
-  ;;   (let [d2 (. (js/Date.) (getTime))]
-  ;;     (assert (> d2 (deref d))))
-  ;;   (assert (true? (realized? d)))
-  ;;   (let [d3 (deref d)]
-  ;;     (assert (= (deref d) d3))))
+  (let [a (atom 0)
+        d (delay (swap! a inc))]
+    (assert (false? (realized? d)))
+    (assert (zero? @a)) ;; delay hasn't triggered yet
+    (assert (= 1 @d)) ;; trigger it
+    (assert (= 1 @a)) ;; make sure side effect has happened
+    (assert (true? (realized? d)))
+    (assert (= 1 @d)) ;; body doesn't happen again
+    (assert (= 1 @a)) ;; atom hasn't changed either
+    (assert (= (force d) @d))
+    (assert (= 1 (force 1)))) ;; you can safely force non-delays
 
   ;; assoc
   (assert (= {1 2 3 4} (assoc {} 1 2 3 4)))
@@ -855,6 +873,16 @@
   (assert (= (count (range 0 0 0)) 0))
   (assert (= (take 3 (range 1 0 0)) (list 1 1 1)))
   (assert (= (take 3 (range 3 1 0)) (list 3 3 3)))
+  ;; PersistentVector
+  (let [pv (vec (range 97))]
+    (assert (= (nth pv 96) 96))
+    (assert (= (nth pv 97 nil) nil))
+    (assert (= (pv 96) 96)))
+
+  (let [stack1 (pop (vec (range 97)))
+        stack2 (pop stack1)]
+    (assert (= 95 (peek stack1)))
+    (assert (= 94 (peek stack2))))
 
   ;; subvec
   (let [v (vec (range 10))
@@ -925,7 +953,7 @@
              (map->Person {:firstname "Fred" :lastname "Mertz" :wife :ethel})))
   (assert (= (dissoc ethel :husband)
              (map->Person {:firstname "Ethel" :lastname "Mertz"})))
-  
+
   (defrecord A [x])
   (defrecord B [x])
   (assert (not= (A. nil) (B. nil)))
@@ -946,22 +974,22 @@
   (defmulti foo identity)
   (defmethod foo 0 [x] x)
   (assert (= foo (ffirst {foo 1})))
-  
+
   (defprotocol IMutate
     (mutate [this]))
-  
+
   (deftype Mutate [^:mutable a]
     IMutate
     (mutate [_]
       (set! a 'foo)))
-  
+
   ;; IFn
   (deftype FnLike []
     IFn
     (-invoke [_] :a)
     (-invoke [_ a] :b)
     (-invoke [_ a b] :c))
-  
+
   (assert (= :a ((FnLike.))))
   (assert (= :b ((FnLike.) 1)))
   (assert (= :c ((FnLike.) 1 2)))
@@ -973,7 +1001,7 @@
     (-invoke [_] a))
 
   (assert (= 1 ((FnLikeB. 1))))
-  
+
   ;; hashing bug in many JS runtimes CLJ-118
   (let [g #{(conj #{:2} :alt)}
         h #{#{:2 :alt}}]
@@ -1016,6 +1044,17 @@
     (assert (= (-get-first fs) \a))
     (assert (= (-find-first fv [1]) 1))
     (assert (identical? (fv 1) fv)))
+
+  (let [x 1]
+    (assert (= (case x 1 :one) :one)))
+  (let [x 1]
+    (assert (= (case x 2 :two :default) :default)))
+  (let [x 1]
+    (assert (= (try
+                 (case x 3 :three)
+                 (catch js/Error e
+                     :fail))
+               :fail)))
 
   :ok
   )

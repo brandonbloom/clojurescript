@@ -63,7 +63,8 @@
      (try
        (let [ast (comp/analyze env form)
              js (comp/emits ast)
-             wrap-js (comp/emits (binding [comp/*cljs-warn-on-undeclared* false]
+             wrap-js (comp/emits (binding [comp/*cljs-warn-on-undeclared* false
+                                           comp/*cljs-warn-on-redef* false]
                                    (comp/analyze env (wrap form))))]
          (when (= (:op ast) :ns)
            (load-dependencies repl-env (into (vals (:requires ast))
@@ -133,7 +134,11 @@
 
 (def default-special-fns
   (let [load-file-fn (fn [repl-env file] (load-file repl-env file))]
-    {'in-ns (fn [_ quoted-ns] (set! comp/*cljs-ns* (second quoted-ns)))
+    {'in-ns (fn [_ quoted-ns]
+              (let [ns-name (second quoted-ns)]
+                (when-not (@comp/namespaces ns-name)
+                  (swap! comp/namespaces assoc ns-name {:name ns-name}))
+                (set! comp/*cljs-ns* ns-name)))
      'load-file load-file-fn
      'clojure.core/load-file load-file-fn
      'load-namespace (fn [repl-env ns] (load-namespace repl-env ns))}))

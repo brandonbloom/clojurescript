@@ -191,16 +191,16 @@
 (defmacro reify [& impls]
   (let [t (gensym "t")
         locals (keys (:locals &env))]
-   `(do
-      (when (undefined? ~t)
-        (deftype ~t [~@locals ~'__meta]
-          cljs.core.IWithMeta
-          (~'-with-meta [~'_ ~'__meta]
-            (new ~t ~@locals ~'__meta))
-          cljs.core.IMeta
-          (~'-meta [~'_] ~'__meta)
-          ~@impls))
-      (new ~t ~@locals nil))))
+    `(do
+       (when (undefined? ~t)
+         (deftype ~t [~@locals __meta#]
+           cljs.core.IWithMeta
+           (~'-with-meta [_# __meta#]
+             (new ~t ~@locals __meta#))
+           cljs.core.IMeta
+           (~'-meta [_#] __meta#)
+           ~@impls))
+       (new ~t ~@locals nil))))
 
 (defmacro this-as
   "Defines a scope where JavaScript's implicit \"this\" is bound to the name provided."
@@ -312,6 +312,7 @@
                             (drop-while seq? (next s)))
                      ret)))]
     (let [gs (gensym)
+          ksym (gensym "k")
 	  impls (concat
 		 impls
 		 ['IRecord
@@ -328,11 +329,10 @@
 		  `(~'-with-meta [this# ~gs] (new ~tagname ~@(replace {'__meta gs} fields)))
 		  'ILookup
 		  `(~'-lookup [this# k#] (-lookup this# k# nil))
-		  `(~'-lookup [this# k# else#]
-			      (get (merge (hash-map ~@(mapcat (fn [fld] [(keyword fld) fld]) 
-							      base-fields))
-					  ~'__extmap)
-				   k# else#))
+		  `(~'-lookup [this# ~ksym else#]
+         (cond
+           ~@(mapcat (fn [f] [`(identical? ~ksym ~(keyword f)) f]) base-fields)
+           :else (get ~'__extmap ~ksym else#)))
 		  'ICounted
 		  `(~'-count [this#] (+ ~(count base-fields) (count ~'__extmap)))
 		  'ICollection
@@ -434,6 +434,13 @@
 (defmacro lazy-seq [& body]
   `(new cljs.core.LazySeq nil false (fn [] ~@body)))
 
+(defmacro delay [& body]
+  "Takes a body of expressions and yields a Delay object that will
+  invoke the body only the first time it is forced (with force or deref/@), and
+  will cache the result and return it on all subsequent force
+  calls."
+  `(new cljs.core.Delay (atom {:done false, :value nil}) (fn [] ~@body)))
+
 (defmacro binding
   "binding => var-symbol init-expr
 
@@ -500,6 +507,15 @@
     `(let [~gpred ~pred
            ~gexpr ~expr]
        ~(emit gpred gexpr clauses))))
+
+(defmacro case [e & clauses]
+  (let [default (if (odd? (count clauses))
+                  (last clauses)
+                  `(throw (js/Error. (str "No matching clause: " ~e))))
+        pairs (partition 2 clauses)]
+   `(condp = ~e
+      ~@(apply concat pairs)
+      ~default)))
 
 (defmacro try
   "(try expr* catch-clause* finally-clause?)
