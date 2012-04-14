@@ -42,23 +42,34 @@
   or
   when when-first when-let when-not while])
 
+(defn bool-expr [e]
+  (vary-meta e assoc :tag 'boolean))
+
 (defmacro nil? [x]
   `(identical? ~x nil))
 
+;; internal - do not use.
+(defmacro coercive-not= [x y]
+  (bool-expr (list 'js* "(~{} != ~{})" x y)))
+
 (defmacro true? [x]
-  (list 'js* "~{} === true" x))
+  (bool-expr (list 'js* "~{} === true" x)))
 
 (defmacro false? [x]
-  (list 'js* "~{} === false" x))
+  (bool-expr (list 'js* "~{} === false" x)))
 
 (defmacro undefined? [x]
-  (list 'js* "(void 0 === ~{})" x))
+  (bool-expr (list 'js* "(void 0 === ~{})" x)))
 
 (defmacro identical? [a b]
-  (list 'js* "(~{} === ~{})" a b))
+  (bool-expr (list 'js* "(~{} === ~{})" a b)))
 
-(defmacro aget [a i]
-  (list 'js* "(~{}[~{}])" a i))
+(defmacro aget
+  ([a i]
+     (list 'js* "(~{}[~{}])" a i))
+  ([a i & idxs]
+     (let [astr (apply str (repeat (count idxs) "[~{}]"))]
+      `(~'js* ~(str "(~{}[~{}]" astr ")") ~a ~i ~@idxs))))
 
 (defmacro aset [a i v]
   (list 'js* "(~{}[~{}] = ~{})" a i v))
@@ -87,27 +98,27 @@
 
 (defmacro <
   ([x] true)
-  ([x y] (list 'js* "(~{} < ~{})" x y))
+  ([x y] (bool-expr (list 'js* "(~{} < ~{})" x y)))
   ([x y & more] `(and (< ~x ~y) (< ~y ~@more))))
 
 (defmacro <=
   ([x] true)
-  ([x y] (list 'js* "(~{} <= ~{})" x y))
+  ([x y] (bool-expr (list 'js* "(~{} <= ~{})" x y)))
   ([x y & more] `(and (<= ~x ~y) (<= ~y ~@more))))
 
 (defmacro >
   ([x] true)
-  ([x y] (list 'js* "(~{} > ~{})" x y))
+  ([x y] (bool-expr (list 'js* "(~{} > ~{})" x y)))
   ([x y & more] `(and (> ~x ~y) (> ~y ~@more))))
 
 (defmacro >=
   ([x] true)
-  ([x y] (list 'js* "(~{} >= ~{})" x y))
+  ([x y] (bool-expr (list 'js* "(~{} >= ~{})" x y)))
   ([x y & more] `(and (>= ~x ~y) (>= ~y ~@more))))
 
 (defmacro ==
   ([x] true)
-  ([x y] (list 'js* "(~{} === ~{})" x y))
+  ([x y] (bool-expr (list 'js* "(~{} === ~{})" x y)))
   ([x y & more] `(and (== ~x ~y) (== ~y ~@more))))
 
 (defmacro dec [x]
@@ -241,22 +252,33 @@
                                         `(set! ~(symbol (str prototype-prefix f)) (fn ~@(map adapt-params meths))))
                                       sigs))
                                (cons `(set! ~(symbol (str prototype-prefix pprefix)) true)
-                                     (map (fn [[f & meths]]
-                                            (let [ifn? (= psym 'cljs.core.IFn)
-                                                  pf (if ifn?
-                                                       (str prototype-prefix 'call)
-                                                       (str prototype-prefix pprefix f))
-                                                  adapt-params (fn [[[targ & args :as sig] & body]]
-                                                                 (let [tsym (gensym "tsym")]
-                                                                   `(~(with-meta (vec (cons tsym args)) (meta sig))
-                                                                     (this-as ~tsym
-                                                                              (let [~targ ~tsym]
-                                                                                ~@body)))))
-                                                  meths (if ifn?
-                                                          (map adapt-params meths)
-                                                          meths)]
-                                              `(set! ~(symbol pf) (fn ~@meths))))
-                                          sigs)))))]
+                                     (mapcat (fn [[f & meths]]
+                                               (let [ifn? (= psym 'cljs.core.IFn)
+                                                     pf (if ifn?
+                                                          (str prototype-prefix 'call)
+                                                          (str prototype-prefix pprefix f))
+                                                     adapt-params (fn [[[targ & args :as sig] & body]]
+                                                                    (let [tsym (gensym "tsym")]
+                                                                      `(~(with-meta (vec (cons tsym args)) (meta sig))
+                                                                        (this-as ~tsym
+                                                                                 (let [~targ ~tsym]
+                                                                                   ~@body)))))
+                                                     meths (if ifn?
+                                                             (map adapt-params meths)
+                                                             meths)]
+                                                 (cond 
+                                                  ifn?
+                                                  [`(set! ~(symbol pf) (fn ~@meths))]
+                                                  
+                                                  (vector? (first meths))
+                                                  [`(set! ~(symbol (str pf "__" (count (first meths)))) (fn ~@meths))]
+
+                                                  :else
+                                                  (map (fn [[sig & body :as meth]]
+                                                         `(set! ~(symbol (str pf "__" (count sig)))
+                                                                (fn ~meth)))
+                                                       meths))))
+                                             sigs)))))]
         `(do ~@(mapcat assign-impls impl-map))))))
 
 (defmacro deftype [t fields & impls]
@@ -413,11 +435,18 @@
                           ~@sig))))
         method (fn [[fname & sigs]]
                  (let [sigs (take-while vector? sigs)
-                       slot (symbol (str prefix (name fname)))]
-                   `(defn ~fname ~@(map #(expand-sig fname slot %) sigs))))]
+                       slot (symbol (str prefix (name fname)))
+                       arity-name-fn (fn [sym sig] (symbol (str sym "__" (count sig))))]
+                   `(defn ~fname ~@(map (fn [sig]
+                                          (expand-sig fname
+                                                      (arity-name-fn slot sig)
+                                                      sig))
+                                        sigs))))]
     `(do
+       (set! ~'*unchecked-if* true)
        (def ~psym (~'js* "{}"))
-       ~@(map method methods))))
+       ~@(map method methods)
+       (set! ~'*unchecked-if* false))))
 
 (defmacro satisfies?
   "Returns true if x satisfies the protocol"
@@ -455,6 +484,7 @@
         tempnames (map (comp gensym name) names)
         binds (map vector names vals)
         resets (reverse (map vector names tempnames))]
+    (cljs.compiler/confirm-bindings &env names)
     `(let [~@(interleave tempnames names)]
        (try
         ~@(map

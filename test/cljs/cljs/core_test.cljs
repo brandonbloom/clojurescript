@@ -1,6 +1,17 @@
 (ns cljs.core-test)
 
 (defn test-stuff []
+  ;; -equiv
+  (assert (= 1))
+  (assert (= 1 1))
+  (assert (= 1 1 1))
+  (assert (= 1 1 1 1))
+  (assert (not (= 1 2)))
+  (assert (not (= 1 2 1)))
+  (assert (not (= 1 1 2)))
+  (assert (not (= 1 1 2 1)))
+  (assert (not (= 1 1 1 2)))
+  
   ;; arithmetic
   (assert (= (+) 0))
   (assert (= (apply + []) 0))
@@ -581,6 +592,12 @@
     (assert (not= (seq a) (seq (to-array [1 2 3]))))
     (assert (not= a (aclone a))))
 
+  (let [a (array (array 1 2 3) (array 4 5 6))]
+    (assert (= (aget a 0 1) 2))
+    (assert (= (apply aget a [0 1]) 2))
+    (assert (= (aget a 1 1) 5))
+    (assert (= (apply aget a [1 1]) 5)))
+
   ;; sort
   (assert (= [1 2 3 4 5] (sort [5 3 1 4 2])))
   (assert (= [1 2 3 4 5] (sort < [5 3 1 4 2])))
@@ -592,6 +609,8 @@
 
   ;; js->clj
   (assert (= {"a" 1, "b" 2} (js->clj (js* "{\"a\":1,\"b\":2}"))))
+  (assert (= {"a" nil} (js->clj (js* "{\"a\":null}"))))
+  (assert (= {"a" true, "b" false} (js->clj (js* "{\"a\":true,\"b\":false}"))))
   (assert (= {:a 1, :b 2} (js->clj (js* "{\"a\":1,\"b\":2}") :keywordize-keys true)))
   (assert (= [[{:a 1, :b 2} {:a 1, :b 2}]]
                (js->clj (js* "[[{\"a\":1,\"b\":2}, {\"a\":1,\"b\":2}]]") :keywordize-keys true)))
@@ -819,11 +838,11 @@
   (assert (= :nested-a (nested-dispatch2 [[:a :b]])))
 
   ;; general tests
-  (defmulti foo (fn [& args] (first args)))
-  (defmethod foo :a [& args] :a-return)
-  (defmethod foo :default [& args] :default-return)
-  (assert (= :a-return (foo :a)))
-  (assert (= :default-return (foo 1)))
+  (defmulti foo1 (fn [& args] (first args)))
+  (defmethod foo1 :a [& args] :a-return)
+  (defmethod foo1 :default [& args] :default-return)
+  (assert (= :a-return (foo1 :a)))
+  (assert (= :default-return (foo1 1)))
 
   (defmulti area :Shape)
   (defn rect [wd ht] {:Shape :Rect :wd wd :ht ht})
@@ -971,9 +990,9 @@
   (assert (= (meta (with-meta (reify IFoo (foo [this] :foo)) {:foo :bar}))
              {:foo :bar}))
 
-  (defmulti foo identity)
-  (defmethod foo 0 [x] x)
-  (assert (= foo (ffirst {foo 1})))
+  (defmulti foo2 identity)
+  (defmethod foo2 0 [x] x)
+  (assert (= foo2 (ffirst {foo2 1})))
 
   (defprotocol IMutate
     (mutate [this]))

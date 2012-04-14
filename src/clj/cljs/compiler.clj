@@ -15,6 +15,7 @@
   (:import java.lang.StringBuilder))
 
 (declare resolve-var)
+(declare confirm-bindings)
 (require 'cljs.core)
 
 (def js-reserved
@@ -40,6 +41,9 @@
 (def ^:dynamic *cljs-file* nil)
 (def ^:dynamic *cljs-warn-on-undeclared* false)
 (def ^:dynamic *cljs-warn-on-redef* true)
+(def ^:dynamic *cljs-warn-on-dynamic* true)
+(def ^:dynamic *cljs-warn-on-fn-var* true)
+(def ^:dynamic *unchecked-if* (atom false))
 (def ^:dynamic *position* nil)
 
 (defmacro ^:private debug-prn
@@ -98,8 +102,10 @@
              ns (if (= "clojure.core" ns) "cljs.core" ns)
              full-ns (resolve-ns-alias env ns)]
          (confirm-var-exists env full-ns (symbol (name sym)))
-         {:name (symbol (str full-ns "." (munge (name sym))))
-          :ns full-ns})
+         (merge (get-in @namespaces [full-ns :defs (symbol (name sym))])
+           {:name (symbol (str full-ns "." (munge (name sym))))
+            :name-sym (symbol (str full-ns) (str (name sym)))
+            :ns full-ns}))
 
        (.contains s ".")
        (let [idx (.indexOf s ".")
@@ -107,22 +113,32 @@
              suffix (subs s idx)
              lb (-> env :locals prefix)]
          (if lb
-           {:name (munge (symbol (str (:name lb) suffix)))}
+           {:name (munge (symbol (str (:name lb) suffix)))
+            :name-sym (symbol (str (:name lb) suffix))}
            (do
              (confirm-var-exists env prefix (symbol suffix))
-             {:name (munge sym) :ns prefix})))
+             (merge (get-in @namespaces [prefix :defs (symbol suffix)])
+              {:name (munge sym)
+               :name-sym (symbol (str prefix) suffix)
+               :ns prefix}))))
 
        (get-in @namespaces [(-> env :ns :name) :uses sym])
-       {:name (symbol (str (get-in @namespaces [(-> env :ns :name) :uses sym]) "." (munge (name sym))))
-        :ns (-> env :ns :name)}
+       (let [full-ns (get-in @namespaces [(-> env :ns :name) :uses sym])]
+         (merge
+          (get-in @namespaces [full-ns :defs sym])
+          {:name (symbol (str full-ns "." (munge (name sym))))
+           :name-sym (symbol (str full-ns) (str sym))
+           :ns (-> env :ns :name)}))
 
        :else
        (let [full-ns (if (core-name? env sym)
                        'cljs.core
                        (-> env :ns :name))]
          (confirm-var-exists env full-ns sym)
-         {:name (munge (symbol (str full-ns "." (munge (name sym)))))
-          :ns full-ns})))))
+         (merge (get-in @namespaces [full-ns :defs sym])
+           {:name (munge (symbol (str full-ns "." (munge (name sym)))))
+            :name-sym (symbol (str full-ns) (str sym))
+            :ns full-ns}))))))
 
 (defn resolve-var [env sym]
   (if (= (namespace sym) "js")
@@ -153,6 +169,20 @@
                     "." (munge (name sym)))]
          {:name (munge (symbol s))})))))
 
+(defn confirm-bindings [env names]
+  (doseq [name names]
+    (let [env (merge env {:ns (@namespaces *cljs-ns*)})
+          ev (resolve-existing-var env name)]
+      (when (and *cljs-warn-on-dynamic*
+                 ;; don't warn on vars from other namespaces because
+                 ;; dependency ordering happens *after* compilation
+                 (= (:ns ev) *cljs-ns*)
+                 ev (not (-> ev :dynamic)))
+        (binding [*out* *err*]
+          (println (str "WARNING: " (:name-sym ev) " not declared ^:dynamic"
+                        (when (:line env)
+                          (str " at line " (:line env) " " *cljs-file*)))))))))
+
 (defn- comma-sep [xs]
   (interpose "," xs))
 
@@ -182,6 +212,9 @@
   (str \" x \"))
 
 (defmulti emit :op)
+
+(defmethod emit :no-op
+  [m] (println "void 0;"))
 
 (defn emitx [& xs]
   (doseq [x xs]
@@ -335,13 +368,39 @@
   (when-not (= :statement (:context env))
     (emit-wrap env (emit-constant form))))
 
+(defn get-tag [e]
+  (or (-> e :tag)
+      (-> e :info :tag)))
+
+(defn infer-tag [e]
+  (if-let [tag (get-tag e)]
+    tag
+    (case (:op e)
+      :let (infer-tag (:ret e))
+      :if (let [then-tag (infer-tag (:then e))
+                else-tag (infer-tag (:else e))]
+            (when (= then-tag else-tag)
+              then-tag))
+      nil)))
+
+(defn safe-test? [e]
+  (let [tag (infer-tag e)]
+    (or (= tag 'boolean)
+        (when (= (:op e) :constant)
+          (let [form (:form e)]
+            (not (or (and (string? form) (= form ""))
+                     (and (number? form) (zero? form)))))))))
+
 (defmethod emit :if
-  [{:keys [test then else env]}]
-  (let [context (:context env)]
+  [{:keys [test then else env unchecked]}]
+  (let [context (:context env)
+        checked (not (or unchecked (safe-test? test)))]
     (if (= :expr context)
-      (emitx "(cljs.core.truth_(" test ")?" then ":" else ")")
+      (emitx "(" (when checked "cljs.core.truth_") "(" test ")?" then ":" else ")")
       (do
-        (emitln "if(cljs.core.truth_(" test "))")
+        (if checked
+          (emitln "if(cljs.core.truth_(" test "))")
+          (emitln "if(" test ")"))
         (emitln "{" then "} else")
         (emitln "{" else "}")))))
 
@@ -469,9 +528,14 @@
         (if variadic
           (emit-variadic-fn-method (assoc (first methods) :name name))
           (emit-fn-method (assoc (first methods) :name name)))
-        (let [name (or name (gensym))
+        (let [has-name? (and name true)
+              name (or name (gensym))
               maxparams (apply max-key count (map :params methods))
-              mmap (zipmap (repeatedly #(gensym (str name  "__"))) methods)
+              mmap (into {}
+                     (map (fn [method]
+                            [(symbol (str name "__" (count (:params method))))
+                             method])
+                          methods))
               ms (sort-by #(-> % second :params count) (seq mmap))]
           (when (= :return (:context env))
             (emitx "return "))
@@ -483,9 +547,9 @@
               (emit-variadic-fn-method meth)
               (emit-fn-method meth))
             (emitln ";"))
-          (emitln name " = function(" (comma-sep (if variadic
-                                                   (concat (butlast maxparams) ['var_args])
-                                                   maxparams)) "){")
+            (emitln name " = function(" (comma-sep (if variadic
+                                                     (concat (butlast maxparams) ['var_args])
+                                                     maxparams)) "){")
           (when variadic
             (emitln "var " (last maxparams) " = var_args;"))
           (emitln "switch(arguments.length){")
@@ -503,6 +567,10 @@
           (when variadic
             (emitln name ".cljs$lang$maxFixedArity = " max-fixed-arity ";")
             (emitln name ".cljs$lang$applyTo = " (some #(let [[n m] %] (when (:variadic m) n)) ms) ".cljs$lang$applyTo;"))
+          (when has-name?
+            (doseq [[n meth] ms]
+              (let [c (count (:params meth))]
+               (emitln name ".__" c " = " n ";"))))
           (emitln "return " name ";")
           (emitln "})()")))
       (when loop-locals
@@ -574,10 +642,27 @@
 
 (defmethod emit :invoke
   [{:keys [f args env]}]
-  (emit-wrap env
-             (emitx f ".call("
-                    (comma-sep (cons "null" args))
-                    ")")))
+  (let [fn? (and (not (-> f :info :dynamic))
+                 (-> f :info :fn-var))
+        js? (= (-> f :info :ns) 'js)
+        f (if fn?
+            (let [info (-> f :info :info)
+                  arity (count args)
+                  methods (:methods info)]
+              (if (or (> arity (:max-fixed-arity info))
+                      (= (count methods) 1))
+                f
+                (let [arities (map #(-> % :params count) methods)]
+                  (if (some #{arity} arities)
+                    (update-in f [:info :name]
+                               (fn [name] (symbol (str name ".__" arity))))
+                    f))))
+            f)]
+    (emit-wrap env
+      (emitx f (when-not (or fn? js?) ".call") "("
+                 (let [args (if (or fn? js?) args (cons "null" args))]
+                   (comma-sep args))
+                 ")"))))
 
 (defmethod emit :new
   [{:keys [ctor args env]}]
@@ -683,7 +768,8 @@
         else-expr (analyze env else)]
     {:env env :op :if :form form
      :test test-expr :then then-expr :else else-expr
-     :children [test-expr then-expr else-expr]}))
+     :children [test-expr then-expr else-expr]
+     :unchecked @*unchecked-if*}))
 
 (defmethod parse 'throw
   [op env [_ throw :as form] name]
@@ -729,40 +815,60 @@
 
 (defmethod parse 'def
   [op env form name]
-  (let [pfn (fn ([_ sym] {:sym sym})
+  (let [pfn (fn
+              ([_ sym] {:sym sym})
               ([_ sym init] {:sym sym :init init})
               ([_ sym doc init] {:sym sym :doc doc :init init}))
         args (apply pfn form)
-        sym (:sym args)]
+        sym (:sym args)
+        tag (-> sym meta :tag)
+        dynamic (-> sym meta :dynamic)
+        ns-name (-> env :ns :name)]
     (assert (not (namespace sym)) "Can't def ns-qualified name")
-    (let [env (let [ns-name (-> env :ns :name)]
-                (if (or (and (not= ns-name 'cljs.core)
-                             (core-name? env sym))
-                        (get-in @namespaces [ns-name :uses sym]))
-                  (let [ev (resolve-existing-var (dissoc env :locals) sym)]
-                    (when *cljs-warn-on-redef*
-                      (binding [*out* *err*]
-                        (println "WARNING:" sym "already refers to:" (symbol (str (:ns ev)) (str sym))
-                                 "being replaced by:" (symbol (str ns-name) (str sym)))))
-                    (swap! namespaces update-in [ns-name :excludes] conj sym)
-                    (update-in env [:ns :excludes] conj sym))
-                  env))
+    (let [env (if (or (and (not= ns-name 'cljs.core)
+                           (core-name? env sym))
+                      (get-in @namespaces [ns-name :uses sym]))
+                (let [ev (resolve-existing-var (dissoc env :locals) sym)]
+                  (when *cljs-warn-on-redef*
+                    (binding [*out* *err*]
+                      (println (str "WARNING: " sym " already refers to: " (symbol (str (:ns ev)) (str sym))
+                                    " being replaced by: " (symbol (str ns-name) (str sym))
+                                    (when (:line env)
+                                      (str " at line " (:line env) " " *cljs-file*))))))
+                  (swap! namespaces update-in [ns-name :excludes] conj sym)
+                  (update-in env [:ns :excludes] conj sym))
+                env)
           name (munge (:name (resolve-var (dissoc env :locals) sym)))
-          init-expr (when (contains? args :init) (disallowing-recur
-                                                  (analyze (assoc env :context :expr) (:init args) sym)))
+          init-expr (when (contains? args :init)
+                      (disallowing-recur
+                       (analyze (assoc env :context :expr) (:init args) sym)))
+          fn-var? (and init-expr (= (:op init-expr) :fn))
           export-as (when-let [export-val (-> sym meta :export)]
                       (if (= true export-val) name export-val))
           doc (or (:doc args) (-> sym meta :doc))]
-      (swap! namespaces update-in [(-> env :ns :name) :defs sym]
+      (when-let [v (get-in @namespaces [ns-name :defs sym])]
+        (when (and *cljs-warn-on-fn-var*
+                   (not (-> sym meta :declared))
+                   (and (:fn-var v) (not fn-var?)))
+          (binding [*out* *err*]
+            (println (str "WARNING: " (symbol (str ns-name) (str sym))
+                          " no longer fn, references are stale"
+                          (when (:line env)
+                            (str ", at line " (:line env) " " *cljs-file*)))))))
+      (swap! namespaces update-in [ns-name :defs sym]
              (fn [m]
                (let [m (assoc (or m {}) :name name)]
-                 (if-let [line (:line env)]
-                   (-> m
-                       (assoc :file *cljs-file*)
-                       (assoc :line line))
-                   m))))
+                 (merge m
+                   (when tag {:tag tag})
+                   (when dynamic {:dynamic true})
+                   (when-let [line (:line env)]
+                     {:file *cljs-file* :line line})
+                   (when fn-var?
+                     {:fn-var true :info init-expr})))))
       (merge {:env env :op :def :form form
               :name name :doc doc :init init-expr}
+             (when tag {:tag tag})
+             (when dynamic {:dynamic true})
              (when init-expr {:children [init-expr]})
              (when export-as {:export export-as})))))
 
@@ -828,7 +934,11 @@
              (do
                (assert (not (or (namespace name) (.contains (str name) "."))) (str "Invalid local name: " name))
                (let [init-expr (analyze env init)
-                     be {:name (gensym (str (munge name) "__")) :init init-expr}]
+                     be {:name (gensym (str (munge name) "__"))
+                         :init init-expr
+                         :tag (or (-> name meta :tag)
+                                  (-> init-expr :tag))
+                         :local true}]
                  (recur (conj bes be)
                         (assoc-in env [:locals name] be)
                         (next bindings))))
@@ -878,21 +988,32 @@
   [_ env [_ target val] _]
   (disallowing-recur
    (let [enve (assoc env :context :expr)
-         targetexpr (if (symbol? target)
-                      (do
-                        (let [local (-> env :locals target)]
-                          (assert (or (nil? local)
-                                      (and (:field local)
-                                           (:mutable local)))
-                                  "Can't set! local var or non-mutable field"))
-                        (analyze-symbol enve target))
-                      (when (seq? target)
-                        (let [targetexpr (analyze-seq enve target nil)]
-                          (when (:field targetexpr)
-                            targetexpr))))
+         targetexpr (cond
+                     (= target '*unchecked-if*)
+                     (do
+                       (reset! *unchecked-if* val)
+                       ::set-unchecked-if)
+
+                     (symbol? target)
+                     (do
+                       (let [local (-> env :locals target)]
+                         (assert (or (nil? local)
+                                     (and (:field local)
+                                          (:mutable local)))
+                                 "Can't set! local var or non-mutable field"))
+                       (analyze-symbol enve target))
+
+                     :else
+                     (when (seq? target)
+                       (let [targetexpr (analyze-seq enve target nil)]
+                         (when (:field targetexpr)
+                           targetexpr))))
          valexpr (analyze enve val)]
      (assert targetexpr "set! target must be a field or a symbol naming a var")
-     {:env env :op :set! :target targetexpr :val valexpr :children [targetexpr valexpr]})))
+     (cond
+      (= targetexpr ::set-unchecked-if) {:env env :op :no-op}
+      :else {:env env :op :set! :target targetexpr
+             :val valexpr :children [targetexpr valexpr]}))))
 
 (defmethod parse 'ns
   [_ env [_ name & args] _]
@@ -1045,8 +1166,8 @@
                        :args argexprs})))))
 
 (defmethod parse 'js*
-  [op env [_ form & args] _]
-  (assert (string? form))
+  [op env [_ jsform & args :as form] _]
+  (assert (string? jsform))
   (if args
     (disallowing-recur
      (let [seg (fn seg [^String s]
@@ -1057,7 +1178,8 @@
                        (cons (subs s 0 idx) (seg (subs s (inc end))))))))
            enve (assoc env :context :expr)
            argexprs (vec (map #(analyze enve %) args))]
-       {:env env :op :js :segs (seg form) :args argexprs :children argexprs}))
+       {:env env :op :js :segs (seg jsform) :args argexprs :children argexprs
+        :tag (-> form meta :tag) :form form}))
     (let [interp (fn interp [^String s]
                    (let [idx (.indexOf s "~{")]
                      (if (= -1 idx)
@@ -1065,7 +1187,8 @@
                        (let [end (.indexOf s "}" idx)
                              inner (:name (resolve-existing-var env (symbol (subs s (+ 2 idx) end))))]
                          (cons (subs s 0 idx) (cons inner (interp (subs s (inc end)))))))))]
-      {:env env :op :js :code (apply str (interp form))})))
+      {:env env :op :js :code (apply str (interp jsform))
+       :tag (-> form meta :tag)})))
 
 (defn parse-invoke
   [env [f & args]]
@@ -1073,7 +1196,8 @@
    (let [enve (assoc env :context :expr)
          fexpr (analyze enve f)
          argexprs (vec (map #(analyze enve %) args))]
-     {:env env :op :invoke :f fexpr :args argexprs :children (conj argexprs fexpr)})))
+     {:env env :op :invoke :f fexpr :args argexprs
+      :children (conj argexprs fexpr) :tag (-> fexpr :info :tag)})))
 
 (defn analyze-symbol
   "Finds the var associated with sym"
