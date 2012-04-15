@@ -296,7 +296,7 @@
   (emit-meta-constant x
     (concat ["cljs.core.vec(["]
             (comma-sep (map #(fn [] (emit-constant %)) x))
-            ["]))"])))
+            ["])"])))
 
 (defmethod emit-constant clojure.lang.IPersistentMap [x]
   (emit-meta-constant x
