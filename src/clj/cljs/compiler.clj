@@ -213,9 +213,6 @@
 
 (defmulti emit :op)
 
-(defmethod emit :no-op
-  [m] (println "void 0;"))
-
 (defn emitx [& xs]
   (doseq [x xs]
     (cond
@@ -325,6 +322,9 @@
      (when (= :return (:context env#)) (emitx "return "))
      ~@body
      (when-not (= :expr (:context env#)) (emitln ";"))))
+
+(defmethod emit :no-op
+  [m] (emitx "void 0;"))
 
 (defmethod emit :var
   [{:keys [info env] :as arg}]
