@@ -339,7 +339,15 @@
 
 (defmethod emit :var
   [{:keys [info env] :as arg}]
-  (emit-wrap env (emits (munge (:name info)))))
+  (let [deref (get arg :deref true)
+        {:keys [name name-sym]} info]
+    (emit-wrap env
+      (if deref
+        (emits (munge name))
+        (do
+          (emits "new cljs.core.Var(")
+          (emit-constant name-sym)
+          (emits ",function(){return " (munge name) ";})"))))))
 
 (defmethod emit :meta
   [{:keys [expr meta env]}]
@@ -746,7 +754,7 @@
 
 (declare analyze analyze-symbol analyze-seq)
 
-(def specials '#{if def fn* do let* loop* throw try* recur new set! ns deftype* defrecord* . js* & quote})
+(def specials '#{if def fn* do let* loop* throw try* recur new set! ns deftype* defrecord* . js* & quote var})
 
 (def ^:dynamic *recur-frames* nil)
 (def ^:dynamic *loop-lets* nil)
@@ -1205,6 +1213,13 @@
       {:env env :op :js :code (apply str (interp jsform))
        :tag (-> form meta :tag)})))
 
+(defmethod parse 'var
+  [op env [_ sym] name]
+  (let [s (analyze-symbol env sym)]
+    (when-not (:info s)
+      (throw (Error. (str "Unable to resolve var: " sym " in this context"))))
+    (assoc s :deref false)))
+
 (defn parse-invoke
   [env [f & args]]
   (disallowing-recur
@@ -1226,10 +1241,9 @@
   "Finds the var associated with sym"
   [env sym]
   (let [ret {:env env :form sym}
-        lb (-> env :locals sym)]
-    (if lb
-      (assoc ret :op :var :info lb)
-      (assoc ret :op :var :info (resolve-existing-var env sym)))))
+        lb (-> env :locals sym)
+        info (if lb lb (resolve-existing-var env sym))]
+    (assoc ret :op :var :info info)))
 
 (defn get-expander [sym env]
   (let [mvar

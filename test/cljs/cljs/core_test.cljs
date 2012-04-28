@@ -1310,5 +1310,18 @@
                      :fail))
                :fail)))
 
+  (assert (= '(var f) '#'f))
+  (defn f [x] (inc x))
+  (def f' f)
+  (def f* #'f)
+  (assert (not (var? f')))
+  (assert (var? f*))
+  (defn f [x] (dec x))
+  (assert (= (f' 5) 6))
+  (assert (= (f* 5) 4))
+  (assert (= #'f #'f))
+  (assert (= (var-get #'f) @#'f f))
+  (assert (= (pr-str #'f) "#'cljs.core-test/f"))
+
   :ok
   )

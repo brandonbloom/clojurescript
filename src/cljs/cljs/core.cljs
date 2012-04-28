@@ -253,6 +253,9 @@
 (defprotocol ITransientSet
   (-disjoin! [tcoll v]))
 
+(defprotocol IVar
+  (-bind-root [v root]))
+
 ;;;;;;;;;;;;;;;;;;; fundamentals ;;;;;;;;;;;;;;;
 (defn ^boolean identical?
   "Tests if 2 arguments are the same object"
@@ -5439,6 +5442,53 @@ reduces them without incurring seq initialization"
   (if (= a.state oldval)
     (do (reset! a newval) true)
     false))
+
+;; Vars
+
+(deftype Var [sym getter]
+  IEquiv
+  (-equiv [_ other] (and other (= sym (.-sym other))))
+
+  IDeref
+  (-deref [_] (getter))
+
+  IPrintable
+  (-pr-seq [_ opts]
+    (concat  ["#'"] (-pr-seq sym opts)))
+
+  IHash
+  (-hash [_] (-hash sym))
+
+  IFn
+  (-invoke [this]                                             ((getter)))
+  (-invoke [this a]                                           ((getter) a))
+  (-invoke [this a b]                                         ((getter) a b))
+  (-invoke [this a b c]                                       ((getter) a b c))
+  (-invoke [this a b c d]                                     ((getter) a b c d))
+  (-invoke [this a b c d e]                                   ((getter) a b c d e))
+  (-invoke [this a b c d e f]                                 ((getter) a b c d e f))
+  (-invoke [this a b c d e f g]                               ((getter) a b c d e f g))
+  (-invoke [this a b c d e f g h]                             ((getter) a b c d e f g h))
+  (-invoke [this a b c d e f g h i]                           ((getter) a b c d e f g h i))
+  (-invoke [this a b c d e f g h i j]                         ((getter) a b c d e f g h i j))
+  (-invoke [this a b c d e f g h i j k]                       ((getter) a b c d e f g h i j k))
+  (-invoke [this a b c d e f g h i j k l]                     ((getter) a b c d e f g h i j k l))
+  (-invoke [this a b c d e f g h i j k l m]                   ((getter) a b c d e f g h i j k l m))
+  (-invoke [this a b c d e f g h i j k l m n]                 ((getter) a b c d e f g h i j k l m n))
+  (-invoke [this a b c d e f g h i j k l m n o]               ((getter) a b c d e f g h i j k l m n o))
+  (-invoke [this a b c d e f g h i j k l m n o p]             ((getter) a b c d e f g h i j k l m n o p))
+  (-invoke [this a b c d e f g h i j k l m n o p q]           ((getter) a b c d e f g h i j k l m n o p q))
+  (-invoke [this a b c d e f g h i j k l m n o p q s]         ((getter) a b c d e f g h i j k l m n o p q s))
+  (-invoke [this a b c d e f g h i j k l m n o p q s t]       ((getter) a b c d e f g h i j k l m n o p q s t))
+  (-invoke [this a b c d e f g h i j k l m n o p q s t rest]  ((getter) a b c d e f g h i j k l m n o p q s t rest)))
+
+(defn var-get
+  "Gets the value in the var object"
+  [x] (.getter x))
+
+(defn ^boolean var?
+  "returns true if v is of type cljs.core.Var"
+  [v] (instance? cljs.core.Var v))
 
 ;; generic to all refs
 ;; (but currently hard-coded to atom!)

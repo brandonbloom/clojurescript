@@ -554,9 +554,9 @@ as macro
 * use
 * DONE val
 * DONE vals
-* var-get
+* DONE var-get
 * var-set
-* var?
+* DONE var?
 * DONE vary-meta
 * DONE vec
 * DONE vector
