@@ -253,9 +253,6 @@
 (defprotocol ITransientSet
   (-disjoin! [tcoll v]))
 
-(defprotocol IVar
-  (-bind-root [v root]))
-
 ;;;;;;;;;;;;;;;;;;; fundamentals ;;;;;;;;;;;;;;;
 (defn ^boolean identical?
   "Tests if 2 arguments are the same object"

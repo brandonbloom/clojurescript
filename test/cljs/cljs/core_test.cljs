@@ -1322,6 +1322,7 @@
   (assert (= #'f #'f))
   (assert (= (var-get #'f) @#'f f))
   (assert (= (pr-str #'f) "#'cljs.core-test/f"))
+  (assert (= 4950 (apply + (range 100)) (apply #'+ (range 100))))
 
   :ok
   )
