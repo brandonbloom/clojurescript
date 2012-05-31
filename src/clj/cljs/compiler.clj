@@ -848,14 +848,16 @@
   `(binding [*recur-frames* (cons nil *recur-frames*)] ~@body))
 
 (defn analyze-block
-  "returns {:statements .. :ret ..}"
+  "returns {:statements .. :ret .. :children ..}"
   [env exprs]
   (let [statements (disallowing-recur
                      (seq (map #(analyze (assoc env :context :statement) %) (butlast exprs))))
         ret (if (<= (count exprs) 1)
               (analyze env (first exprs))
-              (analyze (assoc env :context (if (= :statement (:context env)) :statement :return)) (last exprs)))]
-    {:statements statements :ret ret}))
+              (analyze (assoc env :context (if (= :statement (:context env)) :statement :return)) (last exprs)))
+        form (cons 'do exprs)]
+    {:env env :op :do :form form
+     :statements statements :ret ret :children [:statements :ret]}))
 
 (defmulti parse (fn [op & rest] op))
 
@@ -867,17 +869,14 @@
     {:env env :op :if :form form
      :test test-expr :then then-expr :else else-expr
      :unchecked @*unchecked-if*
-     :children [test-expr then-expr else-expr]}))
+     :children [:test :then :else]}))
 
 (defmethod parse 'throw
   [op env [_ throw :as form] name]
   (let [throw-expr (disallowing-recur (analyze (assoc env :context :expr) throw))]
     {:env env :op :throw :form form
      :throw throw-expr
-     :children [throw-expr]}))
-
-(defn- block-children [{:keys [statements ret]}]
-  (conj (vec statements) ret))
+     :children [:throw]}))
 
 (defmethod parse 'try*
   [op env [_ & body :as form] name]
@@ -912,8 +911,7 @@
      :finally finally
      :name mname
      :catch catch
-     :children (vec (mapcat block-children
-                            [try catch finally]))}))
+     :children [:try :catch :finally]}))
 
 (defmethod parse 'def
   [op env form name]
@@ -978,7 +976,7 @@
              (when tag {:tag tag})
              (when dynamic {:dynamic true})
              (when export-as {:export export-as})
-             (when init-expr {:children [init-expr]})))))
+             (when init-expr {:children [:init]})))))
 
 (defn- analyze-fn-method [env locals meth]
   (letfn [(uniqify [[p & r]]
@@ -1003,9 +1001,9 @@
          recur-frame {:names (vec (map munge params)) :flag (atom nil)}
          block (binding [*recur-frames* (cons recur-frame *recur-frames*)]
                  (analyze-block (assoc env :context :return :locals locals) body))]
-     (merge {:env env :variadic variadic :params (map munge params) :max-fixed-arity fixed-arity
-             :gthis gthis :recurs @(:flag recur-frame)}
-            block))))
+     (merge block
+            {:env env :variadic variadic :params (map munge params) :max-fixed-arity fixed-arity
+             :gthis gthis :recurs @(:flag recur-frame)}))))
 
 (defmethod parse 'fn*
   [op env [_ & args :as form] name]
@@ -1035,8 +1033,7 @@
      :recur-frames *recur-frames* :loop-lets *loop-lets*
      :jsdoc [(when variadic "@param {...*} var_args")]
      :max-fixed-arity max-fixed-arity
-     :children (vec (mapcat block-children
-                            methods))}))
+     :children [:methods]}))
 
 (defmethod parse 'letfn*
   [op env [_ bindings & exprs :as form] name]
@@ -1071,13 +1068,11 @@
         (analyze-block (assoc meth-env :context (if (= :expr context) :return context)) exprs)
         bes (vec (map #(get-in meth-env [:locals %]) names))]
     {:env env :op :letfn :bindings bes :statements statements :ret ret :form form
-     :children (into (vec (map :init bes))
-                     (conj (vec statements) ret))}))
+     :children [:bindings :statements :ret]}))
 
 (defmethod parse 'do
   [op env [_ & exprs :as form] _]
-  (let [block (analyze-block env exprs)]
-    (merge {:env env :op :do :form form :children (block-children block)} block)))
+  (analyze-block env exprs))
 
 (defn analyze-let
   [encl-env [_ bindings & exprs :as form] is-loop]
@@ -1111,8 +1106,7 @@
           (analyze-block (assoc env :context (if (= :expr context) :return context)) exprs))]
     {:env encl-env :op :let :loop is-loop
      :bindings bes :statements statements :ret ret :form form
-     :children (into (vec (map :init bes))
-                     (conj (vec statements) ret))}))
+     :children [:bindings :statements :ret]}))
 
 (defmethod parse 'let*
   [op encl-env form _]
@@ -1133,7 +1127,7 @@
     (assoc {:env env :op :recur :form form}
       :frame frame
       :exprs exprs
-      :children exprs)))
+      :children [:exprs])))
 
 (defmethod parse 'quote
   [_ env [_ x] _]
@@ -1152,7 +1146,7 @@
          (str "WARNING: Wrong number of args (" argc ") passed to " ctor)))
      
      {:env env :op :new :form form :ctor ctorexpr :args argexprs
-      :children (into [ctorexpr] argexprs)})))
+      :children [:ctor :args]})))
 
 (defmethod parse 'set!
   [_ env [_ target val alt :as form] _]
@@ -1188,7 +1182,7 @@
        (cond
         (= targetexpr ::set-unchecked-if) {:env env :op :no-op}
         :else {:env env :op :set! :form form :target targetexpr :val valexpr
-               :children [targetexpr valexpr]})))))
+               :children [:target :val]})))))
 
 (defn ns->relpath [s]
   (str (string/replace (munge s) \. \/) ".cljs"))
@@ -1363,14 +1357,14 @@
            ::access {:env env :op :dot :form form
                      :target targetexpr
                      :field field
-                     :children [targetexpr]
+                     :children [:target]
                      :tag (-> form meta :tag)}
            ::call   (let [argexprs (map #(analyze enve %) args)]
                       {:env env :op :dot :form form
                        :target targetexpr
                        :method method
                        :args argexprs
-                       :children (into [targetexpr] argexprs)
+                       :children [:target :args]
                        :tag (-> form meta :tag)})))))
 
 (defmethod parse 'js*
@@ -1387,7 +1381,7 @@
            enve (assoc env :context :expr)
            argexprs (vec (map #(analyze enve %) args))]
        {:env env :op :js :segs (seg jsform) :args argexprs
-        :tag (-> form meta :tag) :form form :children argexprs}))
+        :tag (-> form meta :tag) :form form :children [:args]}))
     (let [interp (fn interp [^String s]
                    (let [idx (.indexOf s "~{")]
                      (if (= -1 idx)
@@ -1413,7 +1407,7 @@
            (warning env
              (str "WARNING: Wrong number of args (" argc ") passed to " name)))))
      {:env env :op :invoke :form form :f fexpr :args argexprs
-      :tag (or (-> fexpr :info :tag) (-> form meta :tag)) :children (into [fexpr] argexprs)})))
+      :tag (or (-> fexpr :info :tag) (-> form meta :tag)) :children [:f :args]})))
 
 (defn analyze-symbol
   "Finds the var associated with sym"
@@ -1488,20 +1482,20 @@
         vs (disallowing-recur (vec (map #(analyze expr-env % name) (vals form))))]
     (analyze-wrap-meta {:op :map :env env :form form
                         :keys ks :vals vs :simple-keys? simple-keys?
-                        :children (vec (interleave ks vs))}
+                        :children [:keys :vals]}
                        name)))
 
 (defn analyze-vector
   [env form name]
   (let [expr-env (assoc env :context :expr)
         items (disallowing-recur (vec (map #(analyze expr-env % name) form)))]
-    (analyze-wrap-meta {:op :vector :env env :form form :items items :children items} name)))
+    (analyze-wrap-meta {:op :vector :env env :form form :items items :children [:items]} name)))
 
 (defn analyze-set
   [env form name]
   (let [expr-env (assoc env :context :expr)
         items (disallowing-recur (vec (map #(analyze expr-env % name) form)))]
-    (analyze-wrap-meta {:op :set :env env :form form :items items :children items} name)))
+    (analyze-wrap-meta {:op :set :env env :form form :items items :children [:items]} name)))
 
 (defn analyze-wrap-meta [expr name]
   (let [form (:form expr)]
@@ -1510,7 +1504,7 @@
             expr (assoc-in expr [:env :context] :expr) ; change expr to :expr
             meta-expr (analyze-map (:env expr) (meta form) name)]
         {:op :meta :env env :form form
-         :meta meta-expr :expr expr :children [meta-expr expr]})
+         :meta meta-expr :expr expr :children [:meta :expr]})
       expr)))
 
 (defn analyze
