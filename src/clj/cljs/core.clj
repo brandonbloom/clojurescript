@@ -16,6 +16,7 @@
                             when when-first when-let when-not while with-bindings with-in-str
                             with-loading-context with-local-vars with-open with-out-str with-precision with-redefs
                             satisfies? identical? true? false? nil? str get
+                            vector hash-map set
 
                             aget aset
                             + - * / < <= > >= == zero? pos? neg? inc dec max min mod
@@ -344,7 +345,7 @@
                                         (core/str "WARNING: Symbol " % " is not a protocol")))
                                     (cljs.compiler/warning &env
                                       (core/str "WARNING: Can't resolve protocol symbol " %)))))
-        skip-flag (set (-> tsym meta :skip-protocol-flag))]
+        skip-flag (core/set (-> tsym meta :skip-protocol-flag))]
     (if (base-type tsym)
       (let [t (base-type tsym)
             assign-impls (fn [[p sigs]]
@@ -640,8 +641,8 @@
   (let [names (take-nth 2 bindings)
         vals (take-nth 2 (drop 1 bindings))
         tempnames (map (comp gensym name) names)
-        binds (map vector names vals)
-        resets (reverse (map vector names tempnames))]
+        binds (map core/vector names vals)
+        resets (reverse (map core/vector names tempnames))]
     (cljs.compiler/confirm-bindings &env names)
     `(let [~@(interleave tempnames names)]
        (try
@@ -927,8 +928,8 @@
   (when (seq (apply disj (apply hash-set (keys options)) valid-keys))
     (throw
      (apply core/str "Only these options are valid: "
-	    (first valid-keys)
-	    (map #(core/str ", " %) (rest valid-keys))))))
+            (first valid-keys)
+            (map #(core/str ", " %) (rest valid-keys))))))
 
 (defmacro defmulti
   "Creates a new multimethod with the associated dispatch function.
@@ -961,7 +962,7 @@
                       m)]
     (when (= (count options) 1)
       (throw "The syntax for defmulti has changed. Example: (defmulti name dispatch-fn :default dispatch-value)"))
-    (let [options   (apply hash-map options)
+    (let [options   (apply core/hash-map options)
           default   (core/get options :default :default)]
       (check-valid-options options :default :hierarchy)
       `(def ~(with-meta mm-name m)
@@ -1030,3 +1031,30 @@
            (~'f)
            ~(gen-apply-to-helper))))
      (set! ~'*unchecked-if* false)))
+
+(defmacro vector [& items]
+  (if (empty? items)
+    'cljs.core.PersistentVector/EMPTY
+    `(cljs.core.PersistentVector/fromArray (cljs.core/array ~@items) true)))
+
+(def ^:private obj-map-threshold 32)
+(def ^:private array-map-threshold 16)
+
+(defmacro hash-map [& keyvals]
+  (let [keys (take-nth 2 keyvals)
+        vals (take-nth 2 (rest keyvals))
+        simple-keys? (every? #(or (string? %) (keyword? %)) keys)]
+    (cond
+      (core/= (count keys) 0)
+        `cljs.core.ObjMap/EMPTY
+      (and simple-keys? (core/<= (count keys) obj-map-threshold))
+        `(cljs.core.ObjMap/fromObject (array ~@keys) (js-obj ~@keyvals))
+      (core/<= (count keys) array-map-threshold)
+        `(cljs.core.PersistentArrayMap/fromArrays (array ~@keys) (array ~@vals))
+      :else
+        `(cljs.core.PersistentHashMap/fromArrays (array ~@keys) (array ~@vals)))))
+
+(defmacro set* [& items]
+  (if (empty? items)
+    `cljs.core.PersistentHashSet/EMPTY
+    `(cljs.core.PersistentHashSet/fromArray (array ~@items))))

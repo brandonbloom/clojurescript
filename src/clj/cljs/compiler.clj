@@ -336,55 +336,6 @@
   [{:keys [info env] :as arg}]
   (emit-wrap env (emits (munge (:name info)))))
 
-(defmethod emit :meta
-  [{:keys [expr meta env]}]
-  (emit-wrap env
-    (emits "cljs.core.with_meta(" expr "," meta ")")))
-
-(def ^:private array-map-threshold 16)
-(def ^:private obj-map-threshold 32)
-
-(defmethod emit :map
-  [{:keys [env simple-keys? keys vals]}]
-  (emit-wrap env
-    (cond
-      (and simple-keys? (<= (count keys) obj-map-threshold))
-      (emits "cljs.core.ObjMap.fromObject(["
-             (comma-sep keys) ; keys
-             "],{"
-             (comma-sep (map (fn [k v]
-                               (with-out-str (emit k) (print ":") (emit v)))
-                             keys vals)) ; js obj
-             "})")
-
-      (<= (count keys) array-map-threshold)
-      (emits "cljs.core.PersistentArrayMap.fromArrays(["
-             (comma-sep keys)
-             "],["
-             (comma-sep vals)
-             "])")
-
-      :else
-      (emits "cljs.core.PersistentHashMap.fromArrays(["
-             (comma-sep keys)
-             "],["
-             (comma-sep vals)
-             "])"))))
-
-(defmethod emit :vector
-  [{:keys [items env]}]
-  (emit-wrap env
-    (if (empty? items)
-      (emits "cljs.core.PersistentVector.EMPTY")
-      (emits "cljs.core.PersistentVector.fromArray(["
-             (comma-sep items) "], true)"))))
-
-(defmethod emit :set
-  [{:keys [items env]}]
-  (emit-wrap env
-    (emits "cljs.core.set(["
-           (comma-sep items) "])")))
-
 (defmethod emit :constant
   [{:keys [form env]}]
   (when-not (= :statement (:context env))
@@ -1457,42 +1408,6 @@
             (parse-invoke env form))
           (analyze env mform name))))))
 
-(declare analyze-wrap-meta)
-
-(defn analyze-map
-  [env form name]
-  (let [expr-env (assoc env :context :expr)
-        simple-keys? (every? #(or (string? %) (keyword? %))
-                             (keys form))
-        ks (disallowing-recur (vec (map #(analyze expr-env % name) (keys form))))
-        vs (disallowing-recur (vec (map #(analyze expr-env % name) (vals form))))]
-    (analyze-wrap-meta {:op :map :env env :form form
-                        :keys ks :vals vs :simple-keys? simple-keys?
-                        :children (vec (interleave ks vs))}
-                       name)))
-
-(defn analyze-vector
-  [env form name]
-  (let [expr-env (assoc env :context :expr)
-        items (disallowing-recur (vec (map #(analyze expr-env % name) form)))]
-    (analyze-wrap-meta {:op :vector :env env :form form :items items :children items} name)))
-
-(defn analyze-set
-  [env form name]
-  (let [expr-env (assoc env :context :expr)
-        items (disallowing-recur (vec (map #(analyze expr-env % name) form)))]
-    (analyze-wrap-meta {:op :set :env env :form form :items items :children items} name)))
-
-(defn analyze-wrap-meta [expr name]
-  (let [form (:form expr)]
-    (if (meta form)
-      (let [env (:env expr) ; take on expr's context ourselves
-            expr (assoc-in expr [:env :context] :expr) ; change expr to :expr
-            meta-expr (analyze-map (:env expr) (meta form) name)]
-        {:op :meta :env env :form form
-         :meta meta-expr :expr expr :children [meta-expr expr]})
-      expr)))
-
 (defn analyze
   "Given an environment, a map containing {:locals (mapping of names to bindings), :context
   (one of :statement, :expr, :return), :ns (a symbol naming the
@@ -1506,12 +1421,13 @@
                   (or (seq form) ())
                   form)]
        (cond
-        (symbol? form) (analyze-symbol env form)
-        (and (seq? form) (seq form)) (analyze-seq env form name)
-        (map? form) (analyze-map env form name)
-        (vector? form) (analyze-vector env form name)
-        (set? form) (analyze-set env form name)
-        :else {:op :constant :env env :form form}))))
+         (symbol? form) (analyze-symbol env form)
+         (and (seq? form) (seq form)) (analyze-seq env form name)
+         (meta form) (analyze-seq env `(cljs.core/with-meta ~(with-meta form nil) ~(meta form)) name)
+         (map? form) (analyze-seq env `(cljs.core/hash-map ~@(mapcat seq form)) name)
+         (vector? form) (analyze-seq env `(cljs.core/vector ~@(seq form)) name)
+         (set? form) (analyze-seq env `(cljs.core/set* ~@(seq form)) name)
+         :else {:op :constant :env env :form form}))))
 
 (defn analyze-file
   [f]

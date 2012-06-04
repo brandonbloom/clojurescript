@@ -3615,7 +3615,7 @@ reduces them without incurring seq initialization"
 
   IEditableCollection
   (-as-transient [coll]
-    (transient (into (hash-map) coll))))
+    (transient (into cljs.core.PersistentHashMap/EMPTY coll))))
 
 (set! cljs.core.ObjMap/EMPTY (ObjMap. nil (array) (js-obj) 0 0))
 
@@ -5570,6 +5570,15 @@ reduces them without incurring seq initialization"
   (-as-transient [coll] (TransientHashSet. (transient hash-map))))
 
 (set! cljs.core.PersistentHashSet/EMPTY (PersistentHashSet. nil (hash-map) 0))
+
+(set! cljs.core.PersistentHashSet/fromArray
+      (fn [items]
+        (let [len (count items)]
+          (loop [i   0
+                 out (transient cljs.core.PersistentHashSet/EMPTY)]
+            (if (< i len)
+              (recur (inc i) (conj! out (aget items i)))
+              (persistent! out))))))
 
 (deftype TransientHashSet [^:mutable transient-map]
   ITransientCollection
