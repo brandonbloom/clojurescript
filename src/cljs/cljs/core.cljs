@@ -954,7 +954,7 @@ reduces them without incurring seq initialization"
   (cljs.core/undefined? x))
 
 (defn ^boolean instance? [t o]
-  (js* "(~{o} instanceof ~{t})"))
+  (cljs.core/instance? t o))
 
 (defn ^boolean seq?
   "Return true if s satisfies ISeq"
@@ -6093,9 +6093,11 @@ reduces them without incurring seq initialization"
              ;; handle CLJS ctors
              (and (not (nil? obj))
                   ^boolean (.-cljs$lang$type obj))
-             (.cljs$lang$ctorPrSeq obj obj) 
+             (.cljs$lang$ctorPrSeq obj obj)
 
              (satisfies? IPrintable obj) (-pr-seq obj opts)
+
+             (instance? js/RegExp obj) (list "#\"" (.-source obj) "\"")
 
              :else (list "#<" (str obj) ">")))))
 
