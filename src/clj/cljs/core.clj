@@ -15,7 +15,7 @@
                             memfn ns or proxy proxy-super pvalues refer-clojure reify sync time
                             when when-first when-let when-not while with-bindings with-in-str
                             with-loading-context with-local-vars with-open with-out-str with-precision with-redefs
-                            satisfies? identical? true? false? nil? str get
+                            satisfies? instance? identical? true? false? nil? str get
 
                             aget aset
                             + - * / < <= > >= == zero? pos? neg? inc dec max min mod
@@ -99,6 +99,11 @@
 
 (defmacro undefined? [x]
   (bool-expr (list 'js* "(void 0 === ~{})" x)))
+
+(defmacro instance? [t o]
+  (bool-expr (if (symbol? t)
+               (list 'js* "(~{} instanceof ~{})" o t)
+               `(let [t# ~t] (~'js* "(~{} instanceof ~{})" ~o t#)))))
 
 (defmacro identical? [a b]
   (bool-expr (list 'js* "(~{} === ~{})" a b)))
@@ -740,7 +745,7 @@
             (cond
              ~@(mapcat
                 (fn [[_ type name & cb]]
-                  `[(instance? ~type ~e) (let [~name ~e] ~@cb)])
+                  `[(core/instance? ~type ~e) (let [~name ~e] ~@cb)])
                 catches)
              :else (throw ~e)))
         ~@fin)

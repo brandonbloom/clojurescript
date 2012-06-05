@@ -953,7 +953,7 @@ reduces them without incurring seq initialization"
   (cljs.core/undefined? x))
 
 (defn ^boolean instance? [t o]
-  (js* "(~{o} instanceof ~{t})"))
+  (cljs.core/instance? t o))
 
 (defn ^boolean seq?
   "Return true if s satisfies ISeq"
@@ -6029,7 +6029,7 @@ reduces them without incurring seq initialization"
 ;;;;;;;;;;;;;;;;;;;;;;;;; Regular Expressions ;;;;;;;;;;
 
 (defn regexp? [o]
-  (js* "~{o} instanceof RegExp"))
+  (instance? js/RegExp o))
 
 (defn re-matches
   "Returns the result of (re-find re s) if re fully matches s."
