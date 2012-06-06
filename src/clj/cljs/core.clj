@@ -462,7 +462,7 @@
   (let [hinted-fields fields
         fields (vec (map #(with-meta % nil) fields))
         base-fields fields
-	fields (conj fields '__meta '__extmap (with-meta '__hash {:mutable true}))
+        fields (conj fields '__meta '__extmap (with-meta '__hash {:mutable true}))
 
         ;;reshape for extend-type
         dt->et (fn [specs]
@@ -480,66 +480,66 @@
                      ret)))]
     (let [gs (gensym)
           ksym (gensym "k")
-	  impls (concat
-		 impls
-		 ['IRecord
-		  'IHash
-		  `(~'-hash [this#] (caching-hash this# ~'hash-imap ~'__hash))
-		  'IEquiv
-		  `(~'-equiv [this# other#]
+          impls (concat
+                 impls
+                 ['IRecord
+                  'IHash
+                  `(~'-hash [this#] (caching-hash this# ~'hash-imap ~'__hash))
+                  'IEquiv
+                  `(~'-equiv [this# other#]
         (if (and other#
                  (identical? (.-constructor this#)
                              (.-constructor other#))
                  (equiv-map this# other#))
           true
           false))
-		  'IMeta
-		  `(~'-meta [this#] ~'__meta)
-		  'IWithMeta
-		  `(~'-with-meta [this# ~gs] (new ~tagname ~@(replace {'__meta gs} fields)))
-		  'ILookup
-		  `(~'-lookup [this# k#] (-lookup this# k# nil))
-		  `(~'-lookup [this# ~ksym else#]
+                  'IMeta
+                  `(~'-meta [this#] ~'__meta)
+                  'IWithMeta
+                  `(~'-with-meta [this# ~gs] (new ~tagname ~@(replace {'__meta gs} fields)))
+                  'ILookup
+                  `(~'-lookup [this# k#] (-lookup this# k# nil))
+                  `(~'-lookup [this# ~ksym else#]
          (cond
-           ~@(mapcat (fn [f] [`(identical? ~ksym ~(keyword f)) f]) base-fields)
+           ~@(mapcat (fn [f] [`(= ~ksym ~(keyword f)) f]) base-fields)
            :else (get ~'__extmap ~ksym else#)))
-		  'ICounted
-		  `(~'-count [this#] (+ ~(count base-fields) (count ~'__extmap)))
-		  'ICollection
-		  `(~'-conj [this# entry#]
-      		       (if (vector? entry#)
-      			 (-assoc this# (-nth entry# 0) (-nth entry# 1))
-      			 (reduce -conj
-      				 this#
-      				 entry#)))
-		  'IAssociative
-		  `(~'-assoc [this# k# ~gs]
-                     (condp identical? k#
+                  'ICounted
+                  `(~'-count [this#] (+ ~(count base-fields) (count ~'__extmap)))
+                  'ICollection
+                  `(~'-conj [this# entry#]
+                       (if (vector? entry#)
+                         (-assoc this# (-nth entry# 0) (-nth entry# 1))
+                         (reduce -conj
+                                 this#
+                                 entry#)))
+                  'IAssociative
+                  `(~'-assoc [this# k# ~gs]
+                     (condp = k#
                        ~@(mapcat (fn [fld]
                                    [(keyword fld) (list* `new tagname (replace {fld gs '__hash nil} fields))])
                                  base-fields)
                        (new ~tagname ~@(remove #{'__extmap '__hash} fields) (assoc ~'__extmap k# ~gs) nil)))
-		  'IMap
-		  `(~'-dissoc [this# k#] (if (contains? #{~@(map keyword base-fields)} k#)
+                  'IMap
+                  `(~'-dissoc [this# k#] (if (contains? #{~@(map keyword base-fields)} k#)
                                             (dissoc (with-meta (into {} this#) ~'__meta) k#)
                                             (new ~tagname ~@(remove #{'__extmap} fields) 
                                                  (not-empty (dissoc ~'__extmap k#))
                                                  nil)))
-		  'ISeqable
-		  `(~'-seq [this#] (seq (concat [~@(map #(list `vector (keyword %) %) base-fields)] 
+                  'ISeqable
+                  `(~'-seq [this#] (seq (concat [~@(map #(list `vector (keyword %) %) base-fields)] 
                                               ~'__extmap)))
-		  'IPrintable
-		  `(~'-pr-seq [this# opts#]
-			      (let [pr-pair# (fn [keyval#] (pr-sequential pr-seq "" " " "" opts# keyval#))]
-				(pr-sequential
-				 pr-pair# (core/str "#" ~(name rname) "{") ", " "}" opts#
-				 (concat [~@(map #(list `vector (keyword %) %) base-fields)] 
-					 ~'__extmap))))
-		  ])
+                  'IPrintable
+                  `(~'-pr-seq [this# opts#]
+                              (let [pr-pair# (fn [keyval#] (pr-sequential pr-seq "" " " "" opts# keyval#))]
+                                (pr-sequential
+                                 pr-pair# (core/str "#" ~(name rname) "{") ", " "}" opts#
+                                (concat [~@(map #(list `vector (keyword %) %) base-fields)] 
+                                 ~'__extmap))))
+                  ])
           [fpps pmasks] (prepare-protocol-masks env tagname impls)]
       `(do
-	 (~'defrecord* ~tagname ~hinted-fields ~pmasks)
-	 (extend-type ~(with-meta tagname {:skip-protocol-flag fpps}) ~@(dt->et impls))))))
+         (~'defrecord* ~tagname ~hinted-fields ~pmasks)
+         (extend-type ~(with-meta tagname {:skip-protocol-flag fpps}) ~@(dt->et impls))))))
 
 (defn- build-positional-factory
   [rsym rname fields]
@@ -551,9 +551,9 @@
 (defn- build-map-factory
   [rsym rname fields]
   (let [fn-name (symbol (core/str 'map-> rsym))
-	ms (gensym)
-	ks (map keyword fields)
-	getters (map (fn [k] `(~k ~ms)) ks)]
+        ms (gensym)
+        ks (map keyword fields)
+        getters (map (fn [k] `(~k ~ms)) ks)]
     `(defn ~fn-name
        [~ms]
        (new ~rname ~@getters nil (dissoc ~ms ~@ks)))))
@@ -927,8 +927,8 @@
   (when (seq (apply disj (apply hash-set (keys options)) valid-keys))
     (throw
      (apply core/str "Only these options are valid: "
-	    (first valid-keys)
-	    (map #(core/str ", " %) (rest valid-keys))))))
+            (first valid-keys)
+            (map #(core/str ", " %) (rest valid-keys))))))
 
 (defmacro defmulti
   "Creates a new multimethod with the associated dispatch function.

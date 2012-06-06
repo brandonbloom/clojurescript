@@ -16,7 +16,7 @@
   (assert (not (= 1 1 2)))
   (assert (not (= 1 1 2 1)))
   (assert (not (= 1 1 1 2)))
-  
+
   ;; arithmetic
   (assert (= (+) 0))
   (assert (= (apply + []) 0))
@@ -188,7 +188,7 @@
   (assert (= "baz" (name 'foo/bar/baz)))
   (assert (= "foo/bar" (namespace 'foo/bar/baz)))
   (assert (= "baz" (name :foo/bar/baz)))
-  ;(assert (= "foo/bar" (namespace :foo/bar/baz)))
+  (assert (= "foo/bar" (namespace :foo/bar/baz)))
 
   ; str
   (assert (= ":hello" (str :hello)))

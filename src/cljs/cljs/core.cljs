@@ -212,6 +212,13 @@
 (defprotocol IHash
   (-hash [o]))
 
+(defprotocol IHashString
+  (-obj-map-key [o]))
+
+(defprotocol INamed
+  (-namespace [o])
+  (-name [o]))
+
 (defprotocol ISeqable
   (-seq [o]))
 
@@ -470,7 +477,7 @@ reduces them without incurring seq initialization"
   Object
   (toString [this]
     (pr-str this))
-  
+
   ISeqable
   (-seq [this] this)
 
@@ -579,7 +586,7 @@ reduces them without incurring seq initialization"
   IWithMeta
   (-with-meta [coll new-meta]
     (RSeq. ci i new-meta))
-  
+
   ISeqable
   (-seq [coll] coll)
 
@@ -851,7 +858,7 @@ reduces them without incurring seq initialization"
 (defn hash
   ([o] (hash o true))
   ([o ^boolean check-cache]
-     (if (and ^boolean (goog/isString o) check-cache) 
+     (if (and ^boolean (goog/isString o) check-cache)
        (check-string-hash-cache o)
        (-hash o))))
 
@@ -973,17 +980,7 @@ reduces them without incurring seq initialization"
   (if x true false))
 
 (defn ^boolean string? [x]
-  (and ^boolean (goog/isString x)
-       (not (or (identical? (.charAt x 0) \uFDD0)
-                (identical? (.charAt x 0) \uFDD1)))))
-
-(defn ^boolean keyword? [x]
-  (and ^boolean (goog/isString x)
-       (identical? (.charAt x 0) \uFDD0)))
-
-(defn ^boolean symbol? [x]
-  (and ^boolean (goog/isString x)
-       (identical? (.charAt x 0) \uFDD1)))
+  ^boolean (goog/isString x))
 
 (defn ^boolean number? [n]
   (goog/isNumber n))
@@ -1411,7 +1408,7 @@ reduces them without incurring seq initialization"
   ([] "")
   ([x] (cond
         (nil? x) ""
-        :else (. x (toString))))
+        :else (.toString x)))
   ([x & ys]
      ((fn [sb more]
         (if more
@@ -1424,11 +1421,7 @@ reduces them without incurring seq initialization"
   x.toString().  (str nil) returns the empty string. With more than
   one arg, returns the concatenation of the str values of the args."
   ([] "")
-  ([x] (cond
-        (symbol? x) (. x (substring 2 (.-length x)))
-        (keyword? x) (str* ":" (. x (substring 2 (.-length x))))
-        (nil? x) ""
-        :else (. x (toString))))
+  ([x] (if (nil? x) "" (.toString x)))
   ([x & ys]
      ((fn [sb more]
         (if more
@@ -1442,22 +1435,26 @@ reduces them without incurring seq initialization"
   ([s start] (.substring s start))
   ([s start end] (.substring s start end)))
 
+(defn ^boolean keyword? [x]
+  (instance? Keyword x))
+
+(defn ^boolean symbol? [x]
+  (instance? Symbol x))
+
 (defn symbol
   "Returns a Symbol with the given namespace and name."
   ([name] (cond (symbol? name) name
-                (keyword? name) (str* "\uFDD1" "'" (subs name 2)))
-     :else (str* "\uFDD1" "'" name))
+                (keyword? name) (.-k name))
+                :else (Symbol. name))
   ([ns name] (symbol (str* ns "/" name))))
 
 (defn keyword
   "Returns a Keyword with the given namespace and name.  Do not use :
   in the keyword strings, it will be added automatically."
   ([name] (cond (keyword? name) name
-                (symbol? name) (str* "\uFDD0" "'" (subs name 2))
-                :else (str* "\uFDD0" "'" name)))
+                (symbol? name) (.-s name)
+                :else (Keyword. name)))
   ([ns name] (keyword (str* ns "/" name))))
-
-
 
 (defn- equiv-sequential
   "Assumes x is sequential. Returns true if x equals y, otherwise
@@ -1517,11 +1514,11 @@ reduces them without incurring seq initialization"
 ;;;;;;;;;;;;;;;; cons ;;;;;;;;;;;;;;;;
 (deftype List [meta first rest count ^:mutable __hash]
   IList
-  
+
   Object
   (toString [this]
     (pr-str this))
-  
+
   IWithMeta
   (-with-meta [coll meta] (List. meta first rest count __hash))
 
@@ -1567,7 +1564,7 @@ reduces them without incurring seq initialization"
 
 (deftype EmptyList [meta]
   IList
-  
+
   Object
   (toString [this]
     (pr-str this))
@@ -1634,7 +1631,7 @@ reduces them without incurring seq initialization"
 
 (deftype Cons [meta first rest ^:mutable __hash]
   IList
-  
+
   Object
   (toString [this]
     (pr-str this))
@@ -1712,30 +1709,64 @@ reduces them without incurring seq initialization"
     ([string f start]
        (ci-reduce string f start))))
 
+(deftype Symbol [s]
+  Object
+  (toString [_] s)
+
+  IHash
+  (-hash [_] (hash s))
+
+  IEquiv
+  (-equiv [_ other]
+    (and (symbol? other)
+         (identical? s (.-s other))))
+
+  INamed
+  (-name [_]
+    (let [i (.lastIndexOf s "/")]
+      (if (> i -1)
+        (subs s (inc i))
+        s)))
+  (-namespace [_]
+    (let [i (.lastIndexOf s "/")]
+      (when (> i -1)
+        (subs s 0 i))))
+
+  IFn
+  (invoke [this coll]
+    (-lookup coll this nil))
+  (invoke [this coll not-found]
+    (-lookup coll this not-found)))
+
 (deftype Keyword [k]
-  IFn
-  (invoke [_ coll]
-    (when-not (nil? coll)
-      (let [strobj (.-strobj coll)]
-        (if (nil? strobj)
-          (-lookup coll k nil)
-          (aget strobj k))))))
+  Object
+  (toString [_]
+    (str* \: k))
 
-;;hrm
-(extend-type js/String
-  IFn
-  (-invoke
-    ([this coll]
-       (get coll (.toString this)))
-    ([this coll not-found]
-       (get coll (.toString this) not-found))))
+  IHash
+  (-hash [_] (hash k))
 
-(set! js/String.prototype.apply
-      (fn
-        [s args]
-        (if (< (count args) 2)
-          (get (aget args 0) s)
-          (get (aget args 0) s (aget args 1)))))
+  IEquiv
+  (-equiv [_ other]
+    (and (keyword? other)
+         (identical? k (.-k other))))
+
+  INamed
+  (-name [_]
+    (let [i (.lastIndexOf k "/")]
+      (if (> i -1)
+        (subs k (inc i))
+        k)))
+  (-namespace [_]
+    (let [i (.lastIndexOf k "/")]
+      (when (> i -1)
+        (subs k 0 i))))
+
+  IFn
+  (invoke [this coll]
+    (-lookup coll this nil))
+  (invoke [this coll not-found]
+    (-lookup coll this not-found)))
 
 ; could use reify
 ;;; LazySeq ;;;
@@ -1805,7 +1836,7 @@ reduces them without incurring seq initialization"
 (deftype ArrayChunk [arr off end]
   ICounted
   (-count [_] (- end off))
-  
+
   IIndexed
   (-nth [coll i]
     (aget arr (+ off i)))
@@ -3377,7 +3408,7 @@ reduces them without incurring seq initialization"
   Object
   (toString [this]
     (pr-str this))
-  
+
   IWithMeta
   (-with-meta [coll meta] (PersistentQueueSeq. meta front rear __hash))
 
@@ -3413,7 +3444,7 @@ reduces them without incurring seq initialization"
   Object
   (toString [this]
     (pr-str this))
-  
+
   IWithMeta
   (-with-meta [coll meta] (PersistentQueue. meta count front rear __hash))
 
@@ -3484,7 +3515,7 @@ reduces them without incurring seq initialization"
   (let [len (alength array)]
     (loop [i 0]
       (when (< i len)
-        (if (identical? k (aget array i))
+        (if (= k (aget array i))
           i
           (recur (+ i incr)))))))
 
@@ -3492,7 +3523,7 @@ reduces them without incurring seq initialization"
 ; order. Any string, keyword, or symbol key is used as a property name
 ; to store the value in strobj.  If a key is assoc'ed when that same
 ; key already exists in strobj, the old value is overwritten. If a
-; non-string key is assoc'ed, return a HashMap object instead.
+; non-string key is assoc'ed, return a PersistentHashMap object instead.
 
 (defn- obj-map-compare-keys [a b]
   (let [a (hash a)
@@ -3511,7 +3542,7 @@ reduces them without incurring seq initialization"
            out (transient out)]
       (if (< i len)
         (let [k (aget ks i)]
-          (recur (inc i) (assoc! out k (aget so k))))
+          (recur (inc i) (assoc! out k (aget so (-obj-map-key k)))))
         (persistent! (assoc! out k v))))))
 
 ;;; ObjMap
@@ -3521,8 +3552,9 @@ reduces them without incurring seq initialization"
         l (alength ks)]
     (loop [i 0]
       (when (< i l)
-        (let [k (aget ks i)]
-          (aset new-obj k (aget obj k))
+        (let [k (aget ks i)
+              s (-obj-map-key k)]
+          (aset new-obj s (aget obj s))
           (recur (inc i)))))
     new-obj))
 
@@ -3530,7 +3562,7 @@ reduces them without incurring seq initialization"
   Object
   (toString [this]
     (pr-str this))
-  
+
   IWithMeta
   (-with-meta [coll meta] (ObjMap. meta keys strobj update-count __hash))
 
@@ -3557,7 +3589,7 @@ reduces them without incurring seq initialization"
   ISeqable
   (-seq [coll]
     (when (pos? (.-length keys))
-      (map #(vector % (aget strobj %))
+      (map #(vector % (aget strobj (-obj-map-key %)))
            (.sort keys obj-map-compare-keys))))
 
   ICounted
@@ -3566,44 +3598,44 @@ reduces them without incurring seq initialization"
   ILookup
   (-lookup [coll k] (-lookup coll k nil))
   (-lookup [coll k not-found]
-    (if (and ^boolean (goog/isString k)
-             (not (nil? (scan-array 1 k keys))))
-      (aget strobj k)
-      not-found))
+    (let [s (-obj-map-key k)]
+      (if (and s (not (nil? (scan-array 1 k keys))))
+        (aget strobj s)
+        not-found)))
 
   IAssociative
   (-assoc [coll k v]
-    (if ^boolean (goog/isString k)
+    (if-let [s (-obj-map-key k)]
         (if (or (> update-count cljs.core.ObjMap/HASHMAP_THRESHOLD)
                 (>= (alength keys) cljs.core.ObjMap/HASHMAP_THRESHOLD))
-          (obj-map->hash-map coll k v)
+          (obj-map->hash-map coll s v)
           (if-not (nil? (scan-array 1 k keys))
             (let [new-strobj (obj-clone strobj keys)]
-              (aset new-strobj k v)
+              (aset new-strobj s v)
               (ObjMap. meta keys new-strobj (inc update-count) nil)) ; overwrite
             (let [new-strobj (obj-clone strobj keys) ; append
                   new-keys (aclone keys)]
-              (aset new-strobj k v)
+              (aset new-strobj s v)
               (.push new-keys k)
               (ObjMap. meta new-keys new-strobj (inc update-count) nil))))
         ;; non-string key. game over.
         (obj-map->hash-map coll k v)))
   (-contains-key? [coll k]
-    (if (and ^boolean (goog/isString k)
-             (not (nil? (scan-array 1 k keys))))
-      true
-      false))
+    (let [s (-obj-map-key k)]
+      (if (and s (not (nil? (scan-array 1 k keys))))
+        true
+        false)))
 
   IMap
   (-dissoc [coll k]
-    (if (and ^boolean (goog/isString k)
-             (not (nil? (scan-array 1 k keys))))
-      (let [new-keys (aclone keys)
-            new-strobj (obj-clone strobj keys)]
-        (.splice new-keys (scan-array 1 k new-keys) 1)
-        (js-delete new-strobj k)
-        (ObjMap. meta new-keys new-strobj (inc update-count) nil))
-      coll)) ; key not found, return coll unchanged
+    (let [s (-obj-map-key k)]
+      (if (and s (not (nil? (scan-array 1 k keys))))
+        (let [new-keys (aclone keys)
+              new-strobj (obj-clone strobj keys)]
+          (.splice new-keys (scan-array 1 k new-keys) 1)
+          (js-delete new-strobj s)
+          (ObjMap. meta new-keys new-strobj (inc update-count) nil))
+        coll))) ; key not found, return coll unchanged
 
   IFn
   (-invoke [coll k]
@@ -3621,6 +3653,18 @@ reduces them without incurring seq initialization"
 
 (set! cljs.core.ObjMap/fromObject (fn [ks obj] (ObjMap. nil ks obj 0 nil)))
 
+(extend-protocol IHashString
+  string
+  (-obj-map-key [s] s)
+  Keyword
+  (-obj-map-key [k] (str* "\uFDD0" \: (.-k k)))
+  Symbol
+  (-obj-map-key [s] (str* "\uFDD1" \' (.-s s)))
+  default
+  (-obj-map-key [x] nil))
+;number? anything else here?
+
+
 ;;; HashMap
 ;;; DEPRECATED
 ;;; in favor of PersistentHashMap
@@ -3634,7 +3678,7 @@ reduces them without incurring seq initialization"
   Object
   (toString [this]
     (pr-str this))
-  
+
   IWithMeta
   (-with-meta [coll meta] (HashMap. meta count hashobj __hash))
 
@@ -5522,7 +5566,7 @@ reduces them without incurring seq initialization"
   Object
   (toString [this]
     (pr-str this))
-  
+
   IWithMeta
   (-with-meta [coll meta] (PersistentHashSet. meta hash-map __hash))
 
@@ -5741,23 +5785,14 @@ reduces them without incurring seq initialization"
 (defn name
   "Returns the name String of a string, symbol or keyword."
   [x]
-  (cond
-    (string? x) x
-    (or (keyword? x) (symbol? x))
-      (let [i (.lastIndexOf x "/")]
-        (if (< i 0)
-          (subs x 2)
-          (subs x (inc i))))
-    :else (throw (js/Error. (str "Doesn't support name: " x)))))
+  (if (string? x)
+    x
+    (-name x)))
 
 (defn namespace
   "Returns the namespace String of a symbol or keyword, or nil if not present."
   [x]
-  (if (or (keyword? x) (symbol? x))
-    (let [i (.lastIndexOf x "/")]
-      (when (> i -1)
-        (subs x 2 i)))
-    (throw (js/Error. (str "Doesn't support namespace: " x)))))
+  (-namespace x))
 
 (defn zipmap
   "Returns a map with the keys mapped to the corresponding vals."
@@ -5844,7 +5879,7 @@ reduces them without incurring seq initialization"
   Object
   (toString [this]
     (pr-str this))
-  
+
   IWithMeta
   (-with-meta [rng meta] (Range. meta start end step __hash))
 
@@ -6217,11 +6252,6 @@ reduces them without incurring seq initialization"
   string
   (-pr-seq [obj opts]
     (cond
-     (keyword? obj)
-     (list (str ":"
-                (when-let [nspc (namespace obj)]
-                  (str nspc "/"))
-                (name obj)))
      (symbol? obj)
      (list (str (when-let [nspc (namespace obj)]
                   (str nspc "/"))
@@ -6229,6 +6259,14 @@ reduces them without incurring seq initialization"
      :else (list (if (:readably opts)
                    (goog.string.quote obj)
                    obj))))
+
+  Symbol
+  (-pr-seq [obj opts]
+    (.toString obj))
+
+  Keyword
+  (-pr-seq [obj opts]
+    (.toString obj))
 
   function
   (-pr-seq [this]
@@ -6251,7 +6289,7 @@ reduces them without incurring seq initialization"
             (normalize (.getUTCSeconds d) 2)      "."
             (normalize (.getUTCMilliseconds d) 3) "-"
             "00:00\""))))
-  
+
   LazySeq
   (-pr-seq [coll opts] (pr-sequential pr-seq "(" " " ")" opts coll))
 

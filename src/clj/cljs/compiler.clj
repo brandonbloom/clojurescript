@@ -262,18 +262,14 @@
     (emits \/ (.replaceAll (re-matcher #"/" pattern) "\\\\/") \/ flags)))
 
 (defmethod emit-constant clojure.lang.Keyword [x]
-           (emits \" "\\uFDD0" \'
-                  (if (namespace x)
-                    (str (namespace x) "/") "")
-                  (name x)
-                  \"))
+  (emits "(new cljs.core.Keyword(")
+  (emit-constant (.substring (str x) 1))
+  (emits "))"))
 
 (defmethod emit-constant clojure.lang.Symbol [x]
-           (emits \" "\\uFDD1" \'
-                  (if (namespace x)
-                    (str (namespace x) "/") "")
-                  (name x)
-                  \"))
+  (emits "(new cljs.core.Symbol(")
+  (emit-constant (str x))
+  (emits "))"))
 
 (defn- emit-meta-constant [x & body]
   (if (meta x)
@@ -344,6 +340,12 @@
 (def ^:private array-map-threshold 16)
 (def ^:private obj-map-threshold 32)
 
+(defn- obj-map-key [x]
+  (cond
+    (string? x) x
+    (keyword? x) (str "\uFDD0" x)
+    (symbol? x) (str "\uFDD1" \' x)))
+
 (defmethod emit :map
   [{:keys [env simple-keys? keys vals]}]
   (emit-wrap env
@@ -353,7 +355,7 @@
              (comma-sep keys) ; keys
              "],{"
              (comma-sep (map (fn [k v]
-                               (with-out-str (emit k) (print ":") (emit v)))
+                               (with-out-str (-> k :form obj-map-key emit-constant) (print ":") (emit v)))
                              keys vals)) ; js obj
              "})")
 
@@ -733,18 +735,15 @@
        opt-not?
        (emits "!(" (first args) ")")
 
-       keyword?
-       (emits "(new cljs.core.Keyword(" f ")).call(" (comma-sep (cons "null" args)) ")")
-       
        variadic-invoke
        (let [mfa (:max-fixed-arity variadic-invoke)]
         (emits f "(" (comma-sep (take mfa args))
                (when-not (zero? mfa) ",")
                "cljs.core.array_seq([" (comma-sep (drop mfa args)) "], 0))"))
-       
+
        (or fn? js? goog?)
        (emits f "(" (comma-sep args)  ")")
-       
+
        :else
        (if (and *cljs-static-fns* (= (:op f) :var))
          (let [fprop (str ".cljs$lang$arity$" (count args))]
