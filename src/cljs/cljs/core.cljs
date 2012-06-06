@@ -373,7 +373,9 @@
 
 (extend-type js/Date
   IEquiv
-  (-equiv [o other] (identical? (. o (toString)) (. other (toString)))))
+  (-equiv [o other]
+    (and (instance? js/Date other)
+         (identical? (.toString o) (.toString other)))))
 
 (extend-type number
   IEquiv
