@@ -13,6 +13,7 @@
             [goog.array :as garray]))
 
 (def *unchecked-if* false)
+(def interns (js-obj))
 
 (def
   ^{:doc "Each runtime environment provides a diffenent way to print output.
@@ -943,6 +944,9 @@ reduces them without incurring seq initialization"
          (do (aset to j (aget from i))
              (recur (dec i) (dec j) (dec len)))))))
 
+(def symbols (js-obj))
+(def keywords (js-obj))
+
 ;;;;;;;;;;;;;;;; preds ;;;;;;;;;;;;;;;;;;
 
 (def ^:private lookup-sentinel (js-obj))
@@ -1764,6 +1768,8 @@ reduces them without incurring seq initialization"
     (-lookup coll this nil))
   (invoke [this coll not-found]
     (-lookup coll this not-found)))
+
+(interns)
 
 ; could use reify
 ;;; LazySeq ;;;

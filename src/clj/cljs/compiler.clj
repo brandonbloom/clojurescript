@@ -19,8 +19,9 @@
 (declare warning)
 (def ^:dynamic *cljs-warn-on-undeclared* false)
 (declare confirm-bindings)
-(declare munge)
+(declare munge munge-intern)
 (declare ^:dynamic *cljs-file*)
+(def ^:dynamic *interns* #{:else})
 (require 'cljs.core)
 
 (def js-reserved
@@ -261,12 +262,16 @@
   (let [[_ flags pattern] (re-find #"^(?:\(\?([idmsux]*)\))?(.*)" (str x))]
     (emits \/ (.replaceAll (re-matcher #"/" pattern) "\\\\/") \/ flags)))
 
+(defn munge-intern [x]
+  (-> x str munge (string/replace \. \$)))
+
 (defmethod emit-constant clojure.lang.Keyword [x]
-  (emits "(new cljs.core.Keyword(")
+  (emits "(cljs.core.interns." (munge-intern x) " || new cljs.core.Keyword(")
   (emit-constant (.substring (str x) 1))
   (emits "))"))
 
 (defmethod emit-constant clojure.lang.Symbol [x]
+  ;(emits "(cljs.core.interns." (munge (str x)) " || new cljs.core.Symbol(")
   (emits "(new cljs.core.Symbol(")
   (emit-constant (str x))
   (emits "))"))

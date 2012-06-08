@@ -1030,3 +1030,11 @@
            (~'f)
            ~(gen-apply-to-helper))))
      (set! ~'*unchecked-if* false)))
+
+(defmacro interns []
+  `(do
+     ~@(map (fn [x]
+              `(set! ~(symbol (core/str "cljs.core.interns." (cljs.compiler/munge-intern x)))
+                     ~(cond (keyword? x) `(cljs.core.Keyword. ~(.substring (core/str x) 1))
+                            (symbol? x) `(cljs.core.Symbol ~(core/str x)))))
+            cljs.compiler/*interns*)))
