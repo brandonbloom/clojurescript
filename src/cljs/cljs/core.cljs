@@ -212,9 +212,6 @@
 (defprotocol IHash
   (-hash [o]))
 
-(defprotocol IHashString
-  (-obj-map-key [o]))
-
 (defprotocol INamed
   (-namespace [o])
   (-name [o]))
@@ -3525,6 +3522,14 @@ reduces them without incurring seq initialization"
 ; key already exists in strobj, the old value is overwritten. If a
 ; non-string key is assoc'ed, return a PersistentHashMap object instead.
 
+(defn- obj-map-key [x]
+  (cond
+    (string? x) x
+    (keyword? x) (str* "\uFDD0" \: (.-k x))
+    (symbol? x) (str* "\uFDD1" \' (.-s x))
+    ;TODO: Number? Anything else?
+    :else nil))
+
 (defn- obj-map-compare-keys [a b]
   (let [a (hash a)
         b (hash b)]
@@ -3542,7 +3547,7 @@ reduces them without incurring seq initialization"
            out (transient out)]
       (if (< i len)
         (let [k (aget ks i)]
-          (recur (inc i) (assoc! out k (aget so (-obj-map-key k)))))
+          (recur (inc i) (assoc! out k (aget so (obj-map-key k)))))
         (persistent! (assoc! out k v))))))
 
 ;;; ObjMap
@@ -3553,7 +3558,7 @@ reduces them without incurring seq initialization"
     (loop [i 0]
       (when (< i l)
         (let [k (aget ks i)
-              s (-obj-map-key k)]
+              s (obj-map-key k)]
           (aset new-obj s (aget obj s))
           (recur (inc i)))))
     new-obj))
@@ -3589,7 +3594,7 @@ reduces them without incurring seq initialization"
   ISeqable
   (-seq [coll]
     (when (pos? (.-length keys))
-      (map #(vector % (aget strobj (-obj-map-key %)))
+      (map #(vector % (aget strobj (obj-map-key %)))
            (.sort keys obj-map-compare-keys))))
 
   ICounted
@@ -3598,14 +3603,14 @@ reduces them without incurring seq initialization"
   ILookup
   (-lookup [coll k] (-lookup coll k nil))
   (-lookup [coll k not-found]
-    (let [s (-obj-map-key k)]
+    (let [s (obj-map-key k)]
       (if (and s (not (nil? (scan-array 1 k keys))))
         (aget strobj s)
         not-found)))
 
   IAssociative
   (-assoc [coll k v]
-    (if-let [s (-obj-map-key k)]
+    (if-let [s (obj-map-key k)]
         (if (or (> update-count cljs.core.ObjMap/HASHMAP_THRESHOLD)
                 (>= (alength keys) cljs.core.ObjMap/HASHMAP_THRESHOLD))
           (obj-map->hash-map coll s v)
@@ -3621,14 +3626,14 @@ reduces them without incurring seq initialization"
         ;; non-string key. game over.
         (obj-map->hash-map coll k v)))
   (-contains-key? [coll k]
-    (let [s (-obj-map-key k)]
+    (let [s (obj-map-key k)]
       (if (and s (not (nil? (scan-array 1 k keys))))
         true
         false)))
 
   IMap
   (-dissoc [coll k]
-    (let [s (-obj-map-key k)]
+    (let [s (obj-map-key k)]
       (if (and s (not (nil? (scan-array 1 k keys))))
         (let [new-keys (aclone keys)
               new-strobj (obj-clone strobj keys)]
@@ -3652,17 +3657,6 @@ reduces them without incurring seq initialization"
 (set! cljs.core.ObjMap/HASHMAP_THRESHOLD 32)
 
 (set! cljs.core.ObjMap/fromObject (fn [ks obj] (ObjMap. nil ks obj 0 nil)))
-
-(extend-protocol IHashString
-  string
-  (-obj-map-key [s] s)
-  Keyword
-  (-obj-map-key [k] (str* "\uFDD0" \: (.-k k)))
-  Symbol
-  (-obj-map-key [s] (str* "\uFDD1" \' (.-s s)))
-  default
-  (-obj-map-key [x] nil))
-;number? anything else here?
 
 
 ;;; HashMap
