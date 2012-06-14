@@ -21,7 +21,13 @@
 (declare confirm-bindings)
 (declare munge munge-intern)
 (declare ^:dynamic *cljs-file*)
-(def ^:dynamic *interns* #{:else})
+
+(def ^:dynamic *interns*
+  #{:else
+    :a :a0 :as :b :b0 :bar :baz :c :c0 :d :d0 :e :e0 :exclude
+    :f :f0 :foo :g :g0 :h :i :j :k :l :m :n :o :p :q :r
+    :refer-clojure :require :s :t :u :unsynchronized-mutable
+    :v :w :x :y :z})
 (require 'cljs.core)
 
 (def js-reserved
