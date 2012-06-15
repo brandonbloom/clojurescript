@@ -272,9 +272,12 @@
   (-> x str munge (string/replace \. \$)))
 
 (defmethod emit-constant clojure.lang.Keyword [x]
-  (emits "(cljs.core.interns." (munge-intern x) " || new cljs.core.Keyword(")
-  (emit-constant (.substring (str x) 1))
-  (emits "))"))
+  (if (*interns* x)
+    (emits "cljs.core.interns." (munge-intern x))
+    (do
+      (emits "(new cljs.core.Keyword(")
+      (emit-constant (.substring (str x) 1))
+      (emits "))"))))
 
 (defmethod emit-constant clojure.lang.Symbol [x]
   ;(emits "(cljs.core.interns." (munge (str x)) " || new cljs.core.Symbol(")

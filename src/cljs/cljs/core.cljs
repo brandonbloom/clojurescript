@@ -726,6 +726,36 @@ reduces them without incurring seq initialization"
     (-count coll)
     (accumulating-seq-count coll)))
 
+(deftype Keyword [k]
+  Object
+  (toString [_]
+    (str* \: k))
+
+  IHash
+  (-hash [_] (hash k))
+
+  IEquiv
+  (-equiv [_ other]
+    (and (keyword? other)
+         (identical? k (.-k other))))
+
+  INamed
+  (-name [_]
+    (let [i (.lastIndexOf k "/")]
+      (if (> i -1)
+        (subs k (inc i))
+        k)))
+  (-namespace [_]
+    (let [i (.lastIndexOf k "/")]
+      (when (> i -1)
+        (subs k 0 i))))
+
+  IFn
+  (invoke [this coll]
+    (-lookup coll this nil))
+  (invoke [this coll not-found]
+    (-lookup coll this not-found)))
+
 (declare indexed?)
 
 (defn- linear-traversal-nth
@@ -1732,36 +1762,6 @@ reduces them without incurring seq initialization"
     (let [i (.lastIndexOf s "/")]
       (when (> i -1)
         (subs s 0 i))))
-
-  IFn
-  (invoke [this coll]
-    (-lookup coll this nil))
-  (invoke [this coll not-found]
-    (-lookup coll this not-found)))
-
-(deftype Keyword [k]
-  Object
-  (toString [_]
-    (str* \: k))
-
-  IHash
-  (-hash [_] (hash k))
-
-  IEquiv
-  (-equiv [_ other]
-    (and (keyword? other)
-         (identical? k (.-k other))))
-
-  INamed
-  (-name [_]
-    (let [i (.lastIndexOf k "/")]
-      (if (> i -1)
-        (subs k (inc i))
-        k)))
-  (-namespace [_]
-    (let [i (.lastIndexOf k "/")]
-      (when (> i -1)
-        (subs k 0 i))))
 
   IFn
   (invoke [this coll]
