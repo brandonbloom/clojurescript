@@ -277,10 +277,11 @@
     (do
       (emits "(new cljs.core.Keyword(")
       (emit-constant (.substring (str x) 1))
+      (emits ", ")
+      (emit-constant (str "\uFDD0" x))
       (emits "))"))))
 
 (defmethod emit-constant clojure.lang.Symbol [x]
-  ;(emits "(cljs.core.interns." (munge (str x)) " || new cljs.core.Symbol(")
   (emits "(new cljs.core.Symbol(")
   (emit-constant (str x))
   (emits "))"))
