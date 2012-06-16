@@ -213,6 +213,9 @@
 (defprotocol IHash
   (-hash [o]))
 
+(defprotocol ILookupString
+  (-lookup-string [o]))
+
 (defprotocol INamed
   (-namespace [o])
   (-name [o]))
@@ -396,7 +399,10 @@
 
 (extend-type default
   IHash
-  (-hash [o] (goog.getUid o)))
+  (-hash [o] (goog.getUid o))
+
+  ILookupString
+  (-lookup-string [_] nil))
 
 ;;this is primitive because & emits call to array-seq
 (defn inc
@@ -733,6 +739,9 @@ reduces them without incurring seq initialization"
 
   IHash
   (-hash [_] (hash k))
+
+  ILookupString
+  (-lookup-string [_] lookupString)
 
   IEquiv
   (-equiv [_ other]
@@ -1746,6 +1755,9 @@ reduces them without incurring seq initialization"
 
   IHash
   (-hash [_] (hash s))
+
+  ILookupString
+  (-lookup-string [_] lookupString)
 
   IEquiv
   (-equiv [_ other]
@@ -3529,7 +3541,9 @@ reduces them without incurring seq initialization"
 ; non-string key is assoc'ed, return a PersistentHashMap object instead.
 
 (defn- lookup-string [x]
-  (when x (or (.-lookupString x) x)))
+  (if (goog/isString x)
+    x
+    (-lookup-string x)))
 
 (defn- obj-map-compare-keys [a b]
   (let [a (hash a)
@@ -3605,38 +3619,37 @@ reduces them without incurring seq initialization"
   (-lookup [coll k] (-lookup coll k nil))
   (-lookup [coll k not-found]
     (let [s (lookup-string k)]
-      (if (and (string? s) (not (nil? (scan-array 1 k keys))))
+      (if (and s (not (nil? (scan-array 1 k keys))))
         (aget strobj s)
         not-found)))
 
   IAssociative
   (-assoc [coll k v]
-    (let [s (lookup-string k)]
-      (if (string? s)
-        (if (or (> update-count cljs.core.ObjMap/HASHMAP_THRESHOLD)
-                (>= (alength keys) cljs.core.ObjMap/HASHMAP_THRESHOLD))
-          (obj-map->hash-map coll s v)
-          (if-not (nil? (scan-array 1 k keys))
-            (let [new-strobj (obj-clone strobj keys)]
-              (aset new-strobj s v)
-              (ObjMap. meta keys new-strobj (inc update-count) nil)) ; overwrite
-            (let [new-strobj (obj-clone strobj keys) ; append
-                  new-keys (aclone keys)]
-              (aset new-strobj s v)
-              (.push new-keys k)
-              (ObjMap. meta new-keys new-strobj (inc update-count) nil))))
-        ;; non-string key. game over.
-        (obj-map->hash-map coll k v))))
+    (if-let [s (lookup-string k)]
+      (if (or (> update-count cljs.core.ObjMap/HASHMAP_THRESHOLD)
+              (>= (alength keys) cljs.core.ObjMap/HASHMAP_THRESHOLD))
+        (obj-map->hash-map coll s v)
+        (if-not (nil? (scan-array 1 k keys))
+          (let [new-strobj (obj-clone strobj keys)]
+            (aset new-strobj s v)
+            (ObjMap. meta keys new-strobj (inc update-count) nil)) ; overwrite
+          (let [new-strobj (obj-clone strobj keys) ; append
+                new-keys (aclone keys)]
+            (aset new-strobj s v)
+            (.push new-keys k)
+            (ObjMap. meta new-keys new-strobj (inc update-count) nil))))
+      ;; non-string key. game over.
+      (obj-map->hash-map coll k v)))
   (-contains-key? [coll k]
     (let [s (lookup-string k)]
-      (if (and (string? s) (not (nil? (scan-array 1 k keys))))
+      (if (and s (not (nil? (scan-array 1 k keys))))
         true
         false)))
 
   IMap
   (-dissoc [coll k]
     (let [s (lookup-string k)]
-      (if (and (string? s) (not (nil? (scan-array 1 k keys))))
+      (if (and s (not (nil? (scan-array 1 k keys))))
         (let [new-keys (aclone keys)
               new-strobj (obj-clone strobj keys)]
           (.splice new-keys (scan-array 1 k new-keys) 1)
