@@ -213,9 +213,6 @@
 (defprotocol IHash
   (-hash [o]))
 
-(defprotocol ILookupString
-  (-lookup-string [o]))
-
 (defprotocol INamed
   (-namespace [o])
   (-name [o]))
@@ -399,10 +396,7 @@
 
 (extend-type default
   IHash
-  (-hash [o] (goog.getUid o))
-
-  ILookupString
-  (-lookup-string [_] nil))
+  (-hash [o] (goog.getUid o)))
 
 ;;this is primitive because & emits call to array-seq
 (defn inc
@@ -739,9 +733,6 @@ reduces them without incurring seq initialization"
 
   IHash
   (-hash [_] hashCode)
-
-  ILookupString
-  (-lookup-string [_] lookupString)
 
   IEquiv
   (-equiv [_ other]
@@ -1757,9 +1748,6 @@ reduces them without incurring seq initialization"
 
   IHash
   (-hash [_] hashCode)
-
-  ILookupString
-  (-lookup-string [_] lookupString)
 
   IEquiv
   (-equiv [_ other]
@@ -3543,9 +3531,10 @@ reduces them without incurring seq initialization"
 ; non-string key is assoc'ed, return a PersistentHashMap object instead.
 
 (defn- lookup-string [x]
-  (if (goog/isString x)
-    x
-    (-lookup-string x)))
+  (cond
+    (goog/isString x)
+    (nil? x) nil
+    (.-lookupString x)))
 
 (defn- obj-map-compare-keys [a b]
   (let [a (hash a)
