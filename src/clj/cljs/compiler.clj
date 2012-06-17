@@ -279,12 +279,18 @@
       (emit-constant (.substring (str x) 1))
       (emits ", ")
       (emit-constant (str "\uFDD0" x))
-      (emits "))"))))
+      (emits ", cljs.core.hash(")
+      (emit-constant (str "\uFDD0" x))
+      (emits ")))"))))
 
 (defmethod emit-constant clojure.lang.Symbol [x]
   (emits "(new cljs.core.Symbol(")
   (emit-constant (str x))
-  (emits "))"))
+  (emits ", ")
+  (emit-constant (str "\uFDD1" \' x))
+  (emits ", cljs.core.hash(")
+  (emit-constant (str "\uFDD1" \' x))
+  (emits ")))"))
 
 (defn- emit-meta-constant [x & body]
   (if (meta x)

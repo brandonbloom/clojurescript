@@ -732,13 +732,13 @@ reduces them without incurring seq initialization"
     (-count coll)
     (accumulating-seq-count coll)))
 
-(deftype Keyword [k lookupString]
+(deftype Keyword [k lookupString hashCode]
   Object
   (toString [_]
     (str* \: k))
 
   IHash
-  (-hash [_] (hash k))
+  (-hash [_] hashCode)
 
   ILookupString
   (-lookup-string [_] lookupString)
@@ -1484,8 +1484,9 @@ reduces them without incurring seq initialization"
 (defn symbol
   "Returns a Symbol with the given namespace and name."
   ([name] (cond (symbol? name) name
-                (keyword? name) (.-k name))
-                :else (Symbol. name (str* "\uFDD1" \' name)))
+                (keyword? name) (.-k name)
+                :else (let [lookupString (str* "\uFDD1" \' name)]
+                        (Symbol. name lookupString (hash lookupString)))))
   ([ns name] (symbol (str* ns "/" name))))
 
 (defn keyword
@@ -1493,7 +1494,8 @@ reduces them without incurring seq initialization"
   in the keyword strings, it will be added automatically."
   ([name] (cond (keyword? name) name
                 (symbol? name) (.-s name)
-                :else (Keyword. name (str* "\uFDD0" \: name))))
+                :else (let [lookupString (str* "\uFDD0" \: name)]
+                        (Keyword. name lookupString (hash lookupString)))))
   ([ns name] (keyword (str* ns "/" name))))
 
 (defn- equiv-sequential
@@ -1749,12 +1751,12 @@ reduces them without incurring seq initialization"
     ([string f start]
        (ci-reduce string f start))))
 
-(deftype Symbol [s lookupString]
+(deftype Symbol [s lookupString hashCode]
   Object
   (toString [_] s)
 
   IHash
-  (-hash [_] (hash s))
+  (-hash [_] hashCode)
 
   ILookupString
   (-lookup-string [_] lookupString)
