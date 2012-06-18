@@ -213,6 +213,7 @@
              (assoc (cljs.core.ObjMap. nil (array) (js-obj)) :foo 5)))
 
   (assert (= "\"asdf\"" (pr-str "asdf")))
+  (assert (= "1 1 2 2" (pr-str 1 1 2 2)))
   (assert (= "[1 true {:a 2, :b #\"x\\\"y\"} #<Array [3, 4]>]"
              (pr-str [1 true {:a 2 :b #"x\"y"} (array 3 4)])))
 
@@ -220,6 +221,7 @@
   (assert (= "[1 true {:a 2, :b 42} #<Array [3, 4]>]\n"
              (prn-str [1 true {:a 2 :b 42} (array 3 4)])))
 
+  (assert (= "12" (with-out-str (print 1) (print 2))))
   (assert (= "asdf" (print-str "asdf")))
   (assert (= "asdf\n" (println-str "asdf")))
 

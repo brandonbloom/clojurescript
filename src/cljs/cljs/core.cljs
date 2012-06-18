@@ -17,7 +17,7 @@
 (def
   ^{:doc "Each runtime environment provides a diffenent way to print output.
   Whatever function *print-fn* is bound to will be passed any
-  Strings which should be printed."}
+  Strings which should be printed." :dynamic true}
   *print-fn*
   (fn [_]
     (throw (js/Error. "No *print-fn* fn set for evaluation environment"))))
@@ -6104,39 +6104,16 @@ reduces them without incurring seq initialization"
 
              :else (list "#<" (str obj) ">")))))
 
-(defn- pr-sb [objs opts]
-  (let [first-obj (first objs)
-        sb (gstring/StringBuffer.)]
-    (doseq [obj objs]
-      (when-not (identical? obj first-obj)
-        (.append sb " "))
-      (doseq [string (pr-seq obj opts)]
-        (.append sb string)))
-    sb))
-
-(defn pr-str-with-opts
-  "Prints a sequence of objects to a string, observing all the
-  options given in opts"
-  [objs opts]
-  (str (pr-sb objs opts)))
-
-(defn prn-str-with-opts
-  "Same as pr-str-with-opts followed by (newline)"
-  [objs opts]
-  (let [sb (pr-sb objs opts)]
-    (.append sb \newline)
-    (str sb)))
-
 (defn pr-with-opts
   "Prints a sequence of objects using string-print, observing all
   the options given in opts"
   [objs opts]
-  (let [first-obj (first objs)]
-    (doseq [obj objs]
-      (when-not (identical? obj first-obj)
-        (string-print " "))
-      (doseq [string (pr-seq obj opts)]
-        (string-print string)))))
+  (doseq [string (pr-seq (first objs) opts)]
+    (string-print string))
+  (doseq [obj (next objs)]
+    (string-print " ")
+    (doseq [string (pr-seq obj opts)]
+      (string-print string))))
 
 (defn newline [opts]
   (string-print "\n")
@@ -6154,16 +6131,6 @@ reduces them without incurring seq initialization"
    :meta *print-meta*
    :dup *print-dup*})
 
-(defn pr-str
-  "pr to a string, returning it. Fundamental entrypoint to IPrintable."
-  [& objs]
-  (pr-str-with-opts objs (pr-opts)))
-
-(defn prn-str
-  "Same as pr-str followed by (newline)"
-  [& objs]
-  (prn-str-with-opts objs (pr-opts)))
-
 (defn pr
   "Prints the object(s) using string-print.  Prints the
   object(s), separated by spaces if there is more than one.
@@ -6171,6 +6138,11 @@ reduces them without incurring seq initialization"
   read by the reader"
   [& objs]
   (pr-with-opts objs (pr-opts)))
+
+(defn pr-str
+  "pr to a string, returning it. Fundamental entrypoint to IPrintable."
+  [& objs]
+  (with-out-str (apply pr objs)))
 
 (def ^{:doc
   "Prints the object(s) using string-print.
@@ -6182,7 +6154,7 @@ reduces them without incurring seq initialization"
 (defn print-str
   "print to a string, returning it"
   [& objs]
-  (pr-str-with-opts objs (assoc (pr-opts) :readably false)))
+  (with-out-str (apply print objs)))
 
 (defn println
   "Same as print followed by (newline)"
@@ -6193,13 +6165,18 @@ reduces them without incurring seq initialization"
 (defn println-str
   "println to a string, returning it"
   [& objs]
-  (prn-str-with-opts objs (assoc (pr-opts) :readably false)))
+  (with-out-str (apply println objs)))
 
 (defn prn
   "Same as pr followed by (newline)."
   [& objs]
   (pr-with-opts objs (pr-opts))
   (newline (pr-opts)))
+
+(defn prn-str
+  "Same as pr-str followed by (newline)"
+  [& objs]
+  (with-out-str (apply prn objs)))
 
 (extend-protocol IPrintable
   boolean
