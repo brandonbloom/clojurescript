@@ -539,8 +539,8 @@
                  (range fast-path-protocol-partitions-count))]))))
 
 (defn dt->et
-  ([specs fields] (dt->et specs fields false))
-  ([specs fields inline]
+  ([t specs fields] (dt->et t specs fields false))
+  ([t specs fields inline]
      (loop [ret [] s specs]
        (if (seq s)
          (recur (-> ret
@@ -548,7 +548,8 @@
                     (into
                       (reduce (fn [v [f sigs]]
                                 (conj v (vary-meta (cons f (map #(cons (second %) (nnext %)) sigs))
-                                                   assoc :cljs.analyzer/fields fields
+                                                   assoc :cljs.analyzer/type t
+                                                         :cljs.analyzer/fields fields
                                                          :protocol-impl true
                                                          :protocol-inline inline)))
                               []
@@ -574,7 +575,7 @@
          (deftype* ~t ~fields ~pmasks)
          (set! (.-cljs$lang$type ~t) true)
          (set! (.-cljs$lang$ctorPrSeq ~t) (fn [this#] (list ~(core/str r))))
-         (extend-type ~t ~@(dt->et impls fields true))
+         (extend-type ~t ~@(dt->et t impls fields true))
          ~t)
       `(do
          (deftype* ~t ~fields ~pmasks)
@@ -654,7 +655,7 @@
                     :skip-protocol-flag fpps)]
       `(do
          (~'defrecord* ~tagname ~hinted-fields ~pmasks)
-         (extend-type ~tagname ~@(dt->et impls fields true))))))
+         (extend-type ~tagname ~@(dt->et tagname impls fields true))))))
 
 (defn- build-positional-factory
   [rsym rname fields]
