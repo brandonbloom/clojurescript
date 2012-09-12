@@ -186,27 +186,27 @@
 
 ;; internal - do not use.
 (defmacro coercive-not [x]
-  (bool-expr (list 'js* "(!~{})" x)))
+  (bool-expr `(js/! ~x)))
 
 ;; internal - do not use.
 (defmacro coercive-not= [x y]
-  (bool-expr (list 'js* "(~{} != ~{})" x y)))
+  (bool-expr `(js/!= ~x ~y)))
 
 ;; internal - do not use.
 (defmacro coercive-= [x y]
-  (bool-expr (list 'js* "(~{} == ~{})" x y)))
+  (bool-expr `(js/== ~x ~y)))
 
 (defmacro true? [x]
-  (bool-expr (list 'js* "~{} === true" x)))
+  (bool-expr `(js/=== ~x true)))
 
 (defmacro false? [x]
-  (bool-expr (list 'js* "~{} === false" x)))
+  (bool-expr `(js/=== ~x false)))
 
 (defmacro undefined? [x]
-  (bool-expr (list 'js* "(void 0 === ~{})" x)))
+  (bool-expr `(js/=== js/undefined ~x)))
 
 (defmacro identical? [a b]
-  (bool-expr (list 'js* "(~{} === ~{})" a b)))
+  (bool-expr `(js/=== ~a ~b)))
 
 (defmacro aget
   ([a i]
@@ -221,18 +221,18 @@
 (defmacro +
   ([] 0)
   ([x] x)
-  ([x y] (list 'js* "(~{} + ~{})" x y))
+  ([x y] `(js/+ ~x ~y))
   ([x y & more] `(+ (+ ~x ~y) ~@more)))
 
 (defmacro -
-  ([x] (list 'js* "(- ~{})" x))
-  ([x y] (list 'js* "(~{} - ~{})" x y))
+  ([x] `(js/- ~x))
+  ([x y] `(js/- ~x ~y))
   ([x y & more] `(- (- ~x ~y) ~@more)))
 
 (defmacro *
   ([] 1)
   ([x] x)
-  ([x y] (list 'js* "(~{} * ~{})" x y))
+  ([x y] `(js/* ~x ~y))
   ([x y & more] `(* (* ~x ~y) ~@more)))
 
 (defmacro /
@@ -242,27 +242,27 @@
 
 (defmacro <
   ([x] true)
-  ([x y] (bool-expr (list 'js* "(~{} < ~{})" x y)))
+  ([x y] (bool-expr `(js/< ~x ~y)))
   ([x y & more] `(and (< ~x ~y) (< ~y ~@more))))
 
 (defmacro <=
   ([x] true)
-  ([x y] (bool-expr (list 'js* "(~{} <= ~{})" x y)))
+  ([x y] (bool-expr `(js/<= ~x ~y)))
   ([x y & more] `(and (<= ~x ~y) (<= ~y ~@more))))
 
 (defmacro >
   ([x] true)
-  ([x y] (bool-expr (list 'js* "(~{} > ~{})" x y)))
+  ([x y] (bool-expr `(js/> ~x ~y)))
   ([x y & more] `(and (> ~x ~y) (> ~y ~@more))))
 
 (defmacro >=
   ([x] true)
-  ([x y] (bool-expr (list 'js* "(~{} >= ~{})" x y)))
+  ([x y] (bool-expr `(js/>= ~x ~y)))
   ([x y & more] `(and (>= ~x ~y) (>= ~y ~@more))))
 
 (defmacro ==
   ([x] true)
-  ([x y] (bool-expr (list 'js* "(~{} === ~{})" x y)))
+  ([x y] (bool-expr `(js/=== ~x ~y)))
   ([x y & more] `(and (== ~x ~y) (== ~y ~@more))))
 
 (defmacro dec [x]
@@ -282,12 +282,12 @@
 
 (defmacro max
   ([x] x)
-  ([x y] (list 'js* "((~{} > ~{}) ? ~{} : ~{})" x y x y))
+  ([x y] `(js/? (js/> ~x ~y) ~x ~y))
   ([x y & more] `(max (max ~x ~y) ~@more)))
 
 (defmacro min
   ([x] x)
-  ([x y] (list 'js* "((~{} < ~{}) ? ~{} : ~{})" x y x y))
+  ([x y] `(js/? (js/< ~x ~y) ~x ~y))
   ([x y & more] `(min (min ~x ~y) ~@more)))
 
 (defmacro mod [num div]
@@ -297,16 +297,16 @@
   (list 'js* "(~ ~{})" x))
 
 (defmacro bit-and
-  ([x y] (list 'js* "(~{} & ~{})" x y))
+  ([x y] `(js/& ~x ~y))
   ([x y & more] `(bit-and (bit-and ~x ~y) ~@more)))
 
 ;; internal do not use
 (defmacro unsafe-bit-and
-  ([x y] (bool-expr (list 'js* "(~{} & ~{})" x y)))
+  ([x y] (bool-expr `(js/& ~x ~y)))
   ([x y & more] `(unsafe-bit-and (unsafe-bit-and ~x ~y) ~@more)))
 
 (defmacro bit-or
-  ([x y] (list 'js* "(~{} | ~{})" x y))
+  ([x y] `(js/| ~x ~y))
   ([x y & more] `(bit-or (bit-or ~x ~y) ~@more)))
 
 (defmacro bit-xor
@@ -314,37 +314,37 @@
   ([x y & more] `(bit-xor (bit-xor ~x ~y) ~@more)))
 
 (defmacro bit-and-not
-  ([x y] (list 'js* "(~{} & ~~{})" x y))
+  ([x y] `(js/& ~x (bit-not ~y)))
   ([x y & more] `(bit-and-not (bit-and-not ~x ~y) ~@more)))
 
 (defmacro bit-clear [x n]
-  (list 'js* "(~{} & ~(1 << ~{}))" x n))
+  `(js/& ~x (bit-not (js/<< 1 ~n))))
 
 (defmacro bit-flip [x n]
-  (list 'js* "(~{} ^ (1 << ~{}))" x n))
+  `(bit-xor ~x (js/<< 1 ~n)))
 
 (defmacro bit-test [x n]
-  (list 'js* "((~{} & (1 << ~{})) != 0)" x n))
+  `(js/!= (js/& ~x (js/<< 1 ~n)) 0))
 
 (defmacro bit-shift-left [x n]
-  (list 'js* "(~{} << ~{})" x n))
+  `(js/<< ~x ~n))
 
 (defmacro bit-shift-right [x n]
-  (list 'js* "(~{} >> ~{})" x n))
+  `(js/>> ~x ~n))
 
 (defmacro bit-shift-right-zero-fill [x n]
-  (list 'js* "(~{} >>> ~{})" x n))
+  `(js/>>> ~x ~n))
 
 (defmacro bit-set [x n]
-  (list 'js* "(~{} | (1 << ~{}))" x n))
+  `(js/| ~x (js/<< 1 ~n)))
 
 ;; internal
 (defmacro mask [hash shift]
-  (list 'js* "((~{} >>> ~{}) & 0x01f)" hash shift))
+  `(js/& (js/>>> ~hash ~shift) 0x01f))
 
 ;; internal
 (defmacro bitpos [hash shift]
-  (list 'js* "(1 << ~{})" `(mask ~hash ~shift)))
+  `(js/<< 1 (mask ~hash ~shift)))
 
 ;; internal
 (defmacro caching-hash [coll hash-fn hash-key]
