@@ -557,6 +557,14 @@
 (defn protocol-prefix [psym]
   (symbol (str (-> (str psym) (.replace \. \$) (.replace \/ \$)) "$")))
 
+(def unary-ops
+  '#{- + delete !}) ; omits ~
+
+(def binary-ops
+  '#{* / % + - << >> >>> < > <= >= instanceof in == != === & | && ||}) ; omits ^
+
+;;TODO: xor and bitwise not
+
 (defmethod emit :invoke
   [{:keys [f args env] :as expr}]
   (let [info (:info f)
@@ -625,6 +633,16 @@
         (emits f "(" (comma-sep (take mfa args))
                (when-not (zero? mfa) ",")
                "cljs.core.array_seq([" (comma-sep (drop mfa args)) "], 0))"))
+
+       (and js? (unary-ops (symbol (name (:name info)))) (= (count args) 1))
+       (emits "(" (name (:name info)) " (" (first args) "))")
+
+       (and js? (binary-ops (symbol (name (:name info)))) (= (count args) 2))
+       (emits "((" (first args) ")" (name (:name info)) "(" (second args) "))")
+
+       (and js? (= (symbol (name (:name info))) '?) (= (count args) 3))
+       (let [[test then else] args]
+         (emits "((" test ") ? (" then ") : (" else "))"))
        
        (or fn? js? goog?)
        (emits f "(" (comma-sep args)  ")")
