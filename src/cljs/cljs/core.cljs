@@ -79,7 +79,7 @@
   "Creates a new javascript array.
 @param {...*} var_args" ;;array is a special case, don't emulate this doc string
   [var-args]            ;; [& items]
-  (.call (.-slice (.-prototype js/Array)) (js* "arguments")))
+  (.call (.-slice (.-prototype js/Array)) js/arguments))
 
 (defn make-array
   ([size]
