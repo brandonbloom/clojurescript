@@ -1001,10 +1001,10 @@
      rest)))
 
 (defmacro alength [a]
-  (list 'js* "~{}.length" a))
+  `(.-length ~a))
 
 (defmacro aclone [a]
-  (list 'js* "~{}.slice()" a))
+  `(.slice ~a))
 
 (defmacro amap
   "Maps an expression across an array a, using an index named idx, and
