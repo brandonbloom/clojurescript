@@ -169,8 +169,6 @@
 (defn emit-constant [x]
   (emit-source (constant-node x)))
 
-(defmulti transpile :op)
-
 (defn emit-block
   [context statements ret]
   (when statements
@@ -185,60 +183,70 @@
          (emit-source x#)))
      (when-not (= :expr (:context env#)) (emitln ";"))))
 
+(defmulti transpile :op)
+
+(defmethod emit :default
+  [{:keys [env op] :as ast}]
+  (let [node (transpile ast)]
+    (if (#{:meta :map :vector :set} op)
+      (emit-wrap node)
+      node)))
+
 (defmethod emit :no-op [m])
 
-(defmethod emit :var
-  [{:keys [info env] :as arg}]
+(defmethod transpile :var
+  [{:keys [info]}]
   (let [n (:name info)
         n (if (= (namespace n) "js")
             (name n)
             info)]
-    (when-not (= :statement (:context env))
-      (emit-wrap env (js/name (munge n))))))
+    (js/name (munge n))))
 
-(defmethod emit :meta
-  [{:keys [expr meta env]}]
-  (emit-wrap env
-    (emits "cljs.core.with_meta(" expr "," meta ")")))
+(defmethod emit :var
+  [{:keys [env] :as ast}]
+  (when-not (= :statement (:context env))
+    (emit-wrap env (transpile ast))))
+
+(defmethod transpile :meta
+  [{:keys [expr meta]}]
+  (js/call 'cljs.core.with_meta (transpile expr) (transpile meta)))
 
 (def ^:private array-map-threshold 16)
 (def ^:private obj-map-threshold 32)
 
-(defmethod emit :map
-  [{:keys [env simple-keys? keys vals]}]
-  (emit-wrap env
-    (cond
-      (zero? (count keys))
-      (js/name 'cljs.core.ObjMap.EMPTY)
+(defmethod transpile :map
+  [{:keys [simple-keys? keys vals]}]
+  (cond
+    (zero? (count keys))
+    (js/name 'cljs.core.ObjMap.EMPTY)
 
-      (and simple-keys? (<= (count keys) obj-map-threshold))
-      (let [keys* (map stringify (map :form keys))]
-        (js/call 'cljs.core.ObjMap.fromObject
-                 (apply js/array keys*)
-                 (apply js/object (interleave keys* (map transpile vals)))))
+    (and simple-keys? (<= (count keys) obj-map-threshold))
+    (let [keys* (map stringify (map :form keys))]
+      (js/call 'cljs.core.ObjMap.fromObject
+               (apply js/array keys*)
+               (apply js/object (interleave keys* (map transpile vals)))))
 
-      :else
-      (js/call (if (<= (count keys) array-map-threshold)
-                 'cljs.core.PersistentArrayMap.fromArrays
-                 'cljs.core.PersistentHashMap.fromArrays)
-               (apply js/array (map transpile keys))
-               (apply js/array (map transpile vals))))))
+    :else
+    (js/call (if (<= (count keys) array-map-threshold)
+               'cljs.core.PersistentArrayMap.fromArrays
+               'cljs.core.PersistentHashMap.fromArrays)
+             (apply js/array (map transpile keys))
+             (apply js/array (map transpile vals)))))
 
-(defmethod emit :vector
-  [{:keys [items env]}]
-  (emit-wrap env
-    (if (empty? items)
-      (emits "cljs.core.PersistentVector.EMPTY")
-      (emits "cljs.core.PersistentVector.fromArray(["
-             (comma-sep items) "], true)"))))
+(defmethod transpile :vector
+  [{:keys [items]}]
+  (if (empty? items)
+    (js/name 'cljs.core.PersistentVector.EMPTY)
+    (js/call 'cljs.core.PersistentVector.fromArray
+             (apply js/array (map transpile items))
+             true)))
 
-(defmethod emit :set
-  [{:keys [items env]}]
-  (emit-wrap env
-    (if (empty? items)
-      (emits "cljs.core.PersistentHashSet.EMPTY")
-      (emits "cljs.core.PersistentHashSet.fromArray(["
-             (comma-sep items) "])"))))
+(defmethod transpile :set
+  [{:keys [items]}]
+  (if (empty? items)
+    (js/name 'cljs.core.PersistentHashSet.EMPTY)
+    (js/call 'cljs.core.PersistentHashSet.fromArray
+             (apply js/array (map transpile items)))))
 
 (defmethod transpile :constant
   [{:keys [form]}]
