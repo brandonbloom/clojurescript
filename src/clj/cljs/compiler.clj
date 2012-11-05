@@ -172,7 +172,9 @@
 (defmacro emit-wrap [env & body]
   `(let [env# ~env]
      (when (= :return (:context env#)) (emits "return "))
-     ~@body
+     (let [x# (do ~@body)]
+       (when (js/node? x#)
+         (emit-source x#)))
      (when-not (= :expr (:context env#)) (emitln ";"))))
 
 (defmethod emit :no-op [m])
@@ -184,7 +186,7 @@
             (name n)
             info)]
     (when-not (= :statement (:context env))
-      (emit-wrap env (emits (munge n))))))
+      (emit-wrap env (js/name (munge n))))))
 
 (defmethod emit :meta
   [{:keys [expr meta env]}]
