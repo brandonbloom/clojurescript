@@ -148,27 +148,23 @@
 (defmethod constant-node String [x] (js/string x))
 (defmethod constant-node Boolean [x] (js/boolean x))
 (defmethod constant-node Character [x] (js/string x))
+(defmethod constant-node java.util.regex.Pattern [x] (js/regexp x))
+
+(defmethod constant-node clojure.lang.Keyword [x]
+  (js/string \uFDD0 \'
+             (if (namespace x)
+               (str (namespace x) "/") "")
+             (name x)))
+
+(defmethod constant-node clojure.lang.Symbol [x]
+  (js/string \" "\\uFDD1" \'
+             (if (namespace x)
+               (str (namespace x) "/") "")
+             (name x)
+             \"))
 
 (defmulti emit-constant class)
 (defmethod emit-constant :default [x] (emit-source (constant-node x)))
-
-(defmethod emit-constant java.util.regex.Pattern [x]
-  (let [[_ flags pattern] (re-find #"^(?:\(\?([idmsux]*)\))?(.*)" (str x))]
-    (emits \/ (.replaceAll (re-matcher #"/" pattern) "\\\\/") \/ flags)))
-
-(defmethod emit-constant clojure.lang.Keyword [x]
-           (emits \" "\\uFDD0" \'
-                  (if (namespace x)
-                    (str (namespace x) "/") "")
-                  (name x)
-                  \"))
-
-(defmethod emit-constant clojure.lang.Symbol [x]
-           (emits \" "\\uFDD1" \'
-                  (if (namespace x)
-                    (str (namespace x) "/") "")
-                  (name x)
-                  \"))
 
 (defn- emit-meta-constant [x & body]
   (if (meta x)

@@ -58,8 +58,18 @@
 (defn number [x]
   (IR/number (double x)))
 
-(defn string [x]
-  (IR/string x))
+(defn string
+  ([x] (IR/string x))
+  ([x & ys] (string (apply str x ys))))
+
+(defn regexp
+  ([pattern]
+    (if (instance? java.util.regex.Pattern pattern)
+      (let [[_ flags pattern] (re-find #"^(?:\(\?([idmsux]*)\))?(.*)" (str pattern))]
+        (regexp pattern flags))
+      (IR/regexp (string pattern))))
+  ([pattern flags]
+   (IR/regexp (string pattern) (string flags))))
 
 
 (comment
