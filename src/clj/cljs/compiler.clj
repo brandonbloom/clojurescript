@@ -119,17 +119,23 @@
 (defmethod constant-node :default [x]
   (js/nodify x))
 
+(defn stringify [x]
+  (cond
+    (keyword? x) (str \uFDD0 \'
+                      (if (namespace x)
+                        (str (namespace x) "/") "")
+                      (name x))
+    (symbol? x)  (str \uFDD1 \'
+                      (if (namespace x)
+                        (str (namespace x) "/") "")
+                      (name x))
+    :else (str x)))
+
 (defmethod constant-node clojure.lang.Keyword [x]
-  (js/string \uFDD0 \'
-             (if (namespace x)
-               (str (namespace x) "/") "")
-             (name x)))
+  (js/string (stringify x)))
 
 (defmethod constant-node clojure.lang.Symbol [x]
-  (js/string \uFDD1 \'
-             (if (namespace x)
-               (str (namespace x) "/") "")
-             (name x)))
+  (js/string (stringify x)))
 
 (defn- wrap-meta [x node]
   (if (meta x)
@@ -162,6 +168,8 @@
 
 (defn emit-constant [x]
   (emit-source (constant-node x)))
+
+(defmulti transpile :op)
 
 (defn emit-block
   [context statements ret]
@@ -201,30 +209,20 @@
   (emit-wrap env
     (cond
       (zero? (count keys))
-      (emits "cljs.core.ObjMap.EMPTY")
+      (js/name 'cljs.core.ObjMap.EMPTY)
 
       (and simple-keys? (<= (count keys) obj-map-threshold))
-      (emits "cljs.core.ObjMap.fromObject(["
-             (comma-sep keys) ; keys
-             "],{"
-             (comma-sep (map (fn [k v]
-                               (with-out-str (emit k) (print ":") (emit v)))
-                             keys vals)) ; js obj
-             "})")
-
-      (<= (count keys) array-map-threshold)
-      (emits "cljs.core.PersistentArrayMap.fromArrays(["
-             (comma-sep keys)
-             "],["
-             (comma-sep vals)
-             "])")
+      (let [keys* (map stringify (map :form keys))]
+        (js/call 'cljs.core.ObjMap.fromObject
+                 (apply js/array keys*)
+                 (apply js/object (interleave keys* (map transpile vals)))))
 
       :else
-      (emits "cljs.core.PersistentHashMap.fromArrays(["
-             (comma-sep keys)
-             "],["
-             (comma-sep vals)
-             "])"))))
+      (js/call (if (<= (count keys) array-map-threshold)
+                 'cljs.core.PersistentArrayMap.fromArrays
+                 'cljs.core.PersistentHashMap.fromArrays)
+               (apply js/array (map transpile keys))
+               (apply js/array (map transpile vals))))))
 
 (defmethod emit :vector
   [{:keys [items env]}]
@@ -241,6 +239,10 @@
       (emits "cljs.core.PersistentHashSet.EMPTY")
       (emits "cljs.core.PersistentHashSet.fromArray(["
              (comma-sep items) "])"))))
+
+(defmethod transpile :constant
+  [{:keys [form]}]
+  (constant-node form))
 
 (defmethod emit :constant
   [{:keys [form env]}]

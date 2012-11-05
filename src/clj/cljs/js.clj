@@ -112,6 +112,11 @@
 (defn array [& elements]
   (IR/arraylit (into-array Node (map nodify elements))))
 
+(defn object [& keyvals]
+  (let [propdefs (->> (partition 2 keyvals)
+                      (map (fn [[k v]]
+                             (IR/propdef (IR/stringKey (str k)) (nodify v)))))]
+    (IR/objectlit (into-array Node propdefs))))
 
 (comment
 
