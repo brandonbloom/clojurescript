@@ -1,14 +1,13 @@
 (ns cljs.js
+  (:refer-clojure :exclude (boolean))
   (:import com.google.javascript.rhino.Node)
   (:import com.google.javascript.rhino.IR)
   (:import com.google.javascript.jscomp.CodePrinter$Builder))
 
-
 ;; Reflection voo-doo. This is only necessary until the entire emit phase is done.
 
-(def :private Builder com.google.javascript.jscomp.CodePrinter$Builder)
-
-(let [ctor (.getDeclaredConstructor Builder
+(let [ctor (.getDeclaredConstructor
+             com.google.javascript.jscomp.CodePrinter$Builder
              (into-array [com.google.javascript.rhino.Node]))]
   (.setAccessible ctor true)
   (defn- printer-builder [node]
@@ -39,6 +38,28 @@
 
 ;; Begin reasonable interface
 
+(defn node? [x]
+  (instance? Node x))
+
+(defn null []
+  (IR/nullNode))
+
+;; Can't name a function 'true :-(
+(defn yes []
+  (IR/trueNode))
+
+;; or 'false :-(
+(defn no []
+  (IR/falseNode))
+
+(defn boolean [x]
+  (if x (yes) (no)))
+
+(defn number [x]
+  (IR/number (double x)))
+
+(defn string [x]
+  (IR/string x))
 
 
 (comment

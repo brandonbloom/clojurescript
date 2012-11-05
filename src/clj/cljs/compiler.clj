@@ -13,7 +13,8 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as string]
             [cljs.tagged-literals :as tags]
-            [cljs.analyzer :as ana])
+            [cljs.analyzer :as ana]
+            [cljs.js :as js])
   (:import java.lang.StringBuilder))
 
 (declare munge)
@@ -135,16 +136,21 @@
     (swap! *emitted-provides* conj sym)
     (emitln "goog.provide('" (munge sym) "');")))
 
+(defn emit-source [node]
+  (emits (js/to-source node)))
+
+(defmulti constant-node class)
+
+(defmethod constant-node nil [x] (js/null))
+(defmethod constant-node Long [x] (js/number x))
+(defmethod constant-node Integer [x] (js/number x))
+(defmethod constant-node Double [x] (js/number x))
+(defmethod constant-node String [x] (js/string x))
+(defmethod constant-node Boolean [x] (js/boolean x))
+(defmethod constant-node Character [x] (js/string x))
+
 (defmulti emit-constant class)
-(defmethod emit-constant nil [x] (emits "null"))
-(defmethod emit-constant Long [x] (emits x))
-(defmethod emit-constant Integer [x] (emits x)) ; reader puts Integers in metadata
-(defmethod emit-constant Double [x] (emits x))
-(defmethod emit-constant String [x]
-  (emits (wrap-in-double-quotes (escape-string x))))
-(defmethod emit-constant Boolean [x] (emits (if x "true" "false")))
-(defmethod emit-constant Character [x]
-  (emits (wrap-in-double-quotes (escape-char x))))
+(defmethod emit-constant :default [x] (emit-source (constant-node x)))
 
 (defmethod emit-constant java.util.regex.Pattern [x]
   (let [[_ flags pattern] (re-find #"^(?:\(\?([idmsux]*)\))?(.*)" (str x))]
