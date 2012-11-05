@@ -71,31 +71,6 @@
 (defn- comma-sep [xs]
   (interpose "," xs))
 
-(defn- escape-char [^Character c]
-  (let [cp (.hashCode c)]
-    (case cp
-      ; Handle printable escapes before ASCII
-      34 "\\\""
-      92 "\\\\"
-      ; Handle non-printable escapes
-      8 "\\b"
-      12 "\\f"
-      10 "\\n"
-      13 "\\r"
-      9 "\\t"
-      (if (< 31 cp 127)
-        c ; Print simple ASCII characters
-        (format "\\u%04X" cp))))) ; Any other character is Unicode
-
-(defn- escape-string [^CharSequence s]
-  (let [sb (StringBuilder. (count s))]
-    (doseq [c s]
-      (.append sb (escape-char c)))
-    (.toString sb)))
-
-(defn- wrap-in-double-quotes [x]
-  (str \" x \"))
-
 (defmulti emit :op)
 
 (defn emits [& xs]
@@ -141,14 +116,8 @@
 
 (defmulti constant-node class)
 
-(defmethod constant-node nil [x] (js/null))
-(defmethod constant-node Long [x] (js/number x))
-(defmethod constant-node Integer [x] (js/number x))
-(defmethod constant-node Double [x] (js/number x))
-(defmethod constant-node String [x] (js/string x))
-(defmethod constant-node Boolean [x] (js/boolean x))
-(defmethod constant-node Character [x] (js/string x))
-(defmethod constant-node java.util.regex.Pattern [x] (js/regexp x))
+(defmethod constant-node :default [x]
+  (js/nodify x))
 
 (defmethod constant-node clojure.lang.Keyword [x]
   (js/string \uFDD0 \'
@@ -157,56 +126,42 @@
              (name x)))
 
 (defmethod constant-node clojure.lang.Symbol [x]
-  (js/string \" "\\uFDD1" \'
+  (js/string \uFDD1 \'
              (if (namespace x)
                (str (namespace x) "/") "")
-             (name x)
-             \"))
+             (name x)))
 
-(defmulti emit-constant class)
-(defmethod emit-constant :default [x] (emit-source (constant-node x)))
-
-(defn- emit-meta-constant [x & body]
+(defn- wrap-meta [x node]
   (if (meta x)
-    (do
-      (emits "cljs.core.with_meta(" body ",")
-      (emit-constant (meta x))
-      (emits ")"))
-    (emits body)))
+    (js/call 'cljs.core.with_meta node (constant-node meta))
+    node))
 
-(defmethod emit-constant clojure.lang.PersistentList$EmptyList [x]
-  (emit-meta-constant x "cljs.core.List.EMPTY"))
+(defmethod constant-node clojure.lang.PersistentList$EmptyList [x]
+  (wrap-meta x
+    (js/nodify 'cljs.core.List.EMPTY)))
 
-(defmethod emit-constant clojure.lang.PersistentList [x]
-  (emit-meta-constant x
-    (concat ["cljs.core.list("]
-            (comma-sep (map #(fn [] (emit-constant %)) x))
-            [")"])))
+(defmethod constant-node clojure.lang.PersistentList [x]
+  (wrap-meta x
+    (apply js/call 'cljs.core.list x)))
 
-(defmethod emit-constant clojure.lang.Cons [x]
-  (emit-meta-constant x
-    (concat ["cljs.core.list("]
-            (comma-sep (map #(fn [] (emit-constant %)) x))
-            [")"])))
+(defmethod constant-node clojure.lang.Cons [x]
+  (wrap-meta x
+    (apply js/call 'cljs.core.list x)))
 
-(defmethod emit-constant clojure.lang.IPersistentVector [x]
-  (emit-meta-constant x
-    (concat ["cljs.core.vec(["]
-            (comma-sep (map #(fn [] (emit-constant %)) x))
-            ["])"])))
+(defmethod constant-node clojure.lang.IPersistentVector [x]
+  (wrap-meta x
+    (js/call 'cljs.core.vec (apply js/array x))))
 
-(defmethod emit-constant clojure.lang.IPersistentMap [x]
-  (emit-meta-constant x
-    (concat ["cljs.core.hash_map("]
-            (comma-sep (map #(fn [] (emit-constant %))
-                            (apply concat x)))
-            [")"])))
+(defmethod constant-node clojure.lang.IPersistentMap [x]
+  (wrap-meta x
+    (apply js/call 'cljs.core.hash_map (map constant-node (apply concat x)))))
 
-(defmethod emit-constant clojure.lang.PersistentHashSet [x]
-  (emit-meta-constant x
-    (concat ["cljs.core.set(["]
-            (comma-sep (map #(fn [] (emit-constant %)) x))
-            ["])"])))
+(defmethod constant-node clojure.lang.PersistentHashSet [x]
+  (wrap-meta x
+    (js/call 'cljs.core.set (apply js/array (map constant-node x)))))
+
+(defn emit-constant [x]
+  (emit-source (constant-node x)))
 
 (defn emit-block
   [context statements ret]
