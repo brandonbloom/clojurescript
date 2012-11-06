@@ -12,28 +12,26 @@
   (defn- printer-builder [node]
     (.newInstance ctor (into-array [node]))))
 
-(defn- unboxed-class [obj]
-  (cond
-    (instance? Boolean obj) Boolean/TYPE
-    ;;TODO: Other primitives
-    :else (class obj)))
-
-(defn- call-private* [obj method-name & args]
-  (let [method (doto (.getDeclaredMethod
-                       (class obj)
+(defn- call-private* [obj method-name & argpairs]
+  (let [classes (into-array Class (take-nth 2 argpairs))
+        args (into-array (take-nth 2 (next argpairs)))
+        method (doto (.getDeclaredMethod
+                       (if (instance? Class obj) obj (class obj))
                        (clojure.core/name method-name)
-                       (into-array Class (map unboxed-class args)))
+                       classes)
                  (.setAccessible true))]
-    (.invoke method obj (into-array args))))
+    (.invoke method obj args)))
 
-(defmacro call-private [obj method-name & args]
-  `(call-private* ~obj '~method-name ~@args))
+(defmacro call-private [obj method-name & argpairs]
+  `(call-private* ~obj '~method-name ~@argpairs))
 
 (defn to-source [node]
   (-> (printer-builder node)
-    (call-private setPrettyPrint true)
+    (call-private setPrettyPrint Boolean/TYPE true)
     (call-private build)))
 
+(defn- statement? [node]
+  (clojure.core/boolean (call-private IR mayBeStatement Node node)))
 
 ;; Begin reasonable interface
 
@@ -41,6 +39,12 @@
   (instance? Node x))
 
 (defmulti nodify class)
+
+(defn statementize [x]
+  (let [node (nodify x)]
+    (if (statement? node)
+      node
+      (IR/exprResult node))))
 
 (defmethod nodify :default [x] x)
 
@@ -140,7 +144,7 @@
   (IR/paramList (into-array Node (map nodify params))))
 
 (defn block [& statements]
-  (IR/block (into-array Node (map nodify statements))))
+  (IR/block (into-array Node (map statementize statements))))
 
 (defn function [name params & body]
   (IR/function (nodify name)
