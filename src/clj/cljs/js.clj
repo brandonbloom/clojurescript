@@ -1,7 +1,6 @@
 (ns cljs.js
-  (:refer-clojure :exclude (name boolean))
-  (:import com.google.javascript.rhino.Node)
-  (:import com.google.javascript.rhino.IR)
+  (:refer-clojure :exclude (name boolean empty))
+  (:import [com.google.javascript.rhino Node IR])
   (:import com.google.javascript.jscomp.CodePrinter$Builder))
 
 ;; Reflection voo-doo. This is only necessary until the entire emit phase is done.
@@ -44,6 +43,9 @@
 (defmulti nodify class)
 
 (defmethod nodify :default [x] x)
+
+(defn empty []
+  (IR/empty))
 
 (defn null []
   (IR/nullNode))
@@ -152,6 +154,12 @@
 
 (defn scope [& body]
   (call (apply lambda [] body)))
+
+(defn assign [target value]
+  (IR/assign (nodify target) (nodify value)))
+
+(defn comma [left right]
+  (IR/comma (nodify left) (nodify right)))
 
 (comment
 

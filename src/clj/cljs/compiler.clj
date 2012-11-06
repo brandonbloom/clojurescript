@@ -301,31 +301,17 @@
       (js/scope throw*)
       throw*)))
 
-(defn emit-comment
-  "Emit a nicely formatted comment string."
-  [doc jsdoc]
-  (let [docs (when doc [doc])
-        docs (if jsdoc (concat docs jsdoc) docs)
-        docs (remove nil? docs)]
-    (letfn [(print-comment-lines [e] (doseq [next-line (string/split-lines e)]
-                                       (emitln "* " (string/trim next-line))))]
-      (when (seq docs)
-        (emitln "/**")
-        (doseq [e docs]
-          (when e
-            (print-comment-lines e)))
-        (emitln "*/")))))
-
-(defmethod emit :def
+(defmethod transpile :def
   [{:keys [name init env doc export]}]
-  (when init
-    (let [mname (munge name)]
-      (emit-comment doc (:jsdoc init))
-      (emits mname)
-      (emits " = " init)
-      (when-not (= :expr (:context env)) (emitln ";"))
-      (when export
-        (emitln "goog.exportSymbol('" (munge export) "', " mname ");")))))
+  (if init
+    (let [mname (munge name)
+          assign (js/assign mname (transpile init))]
+      (if export
+        (js/comma assign
+          (js/call 'goog.exportSymbol (js/string (str (munge export))) mname))
+        assign))
+    (js/empty)))
+
 
 (defn emit-apply-to
   [{:keys [name params env]}]
