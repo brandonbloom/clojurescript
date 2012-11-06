@@ -188,8 +188,8 @@
 (defmethod emit :default
   [{:keys [env op] :as ast}]
   (let [node (transpile ast)]
-    (if (#{:meta :map :vector :set} op)
-      (emit-wrap node)
+    (if (#{:meta :map :vector :set :new} op)
+      (emit-wrap env node)
       (emit-source node))))
 
 (defmethod emit :no-op [m])
@@ -311,7 +311,6 @@
           (js/call 'goog.exportSymbol (js/string (str (munge export))) mname))
         assign))
     (js/empty)))
-
 
 (defn emit-apply-to
   [{:keys [name params env]}]
@@ -640,12 +639,9 @@
            (emits "(" f fprop " ? " f fprop "(" (comma-sep args) ") : " f ".call(" (comma-sep (cons "null" args)) "))"))
          (emits f ".call(" (comma-sep (cons "null" args)) ")"))))))
 
-(defmethod emit :new
-  [{:keys [ctor args env]}]
-  (emit-wrap env
-             (emits "(new " ctor "("
-                    (comma-sep args)
-                    "))")))
+(defmethod transpile :new
+  [{:keys [ctor args]}]
+  (apply js/new (transpile ctor) (map transpile args)))
 
 (defmethod emit :set!
   [{:keys [target val env]}]

@@ -165,12 +165,5 @@
 (defn comma [left right]
   (IR/comma (nodify left) (nodify right)))
 
-(comment
-
-(defn go [node]
-  (print (to-source node)))
-
-(go (IR/block [(IR/breakNode)
-               (IR/continueNode)]))
-
-)
+(defn new [ctor & args]
+  (IR/newNode (nodify ctor) (into-array Node (map nodify args))))
