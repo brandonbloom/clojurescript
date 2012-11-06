@@ -175,12 +175,15 @@
     (emits statements))
   (emit ret))
 
-(defn transpile-block [{:keys [statements ret env]}]
-  (let [statements* (mapv transpile statements)
-        ret* (if (= :return (:context env))
-               (js/return (transpile ret))
-               (transpile ret))]
-    (apply js/block (conj statements* ret*))))
+(defn transpile-block
+  ([{:keys [env] :as ast}]
+   (transpile-block (:context env) ast))
+  ([context {:keys [statements ret]}]
+    (let [statements* (mapv transpile statements)
+          ret* (if (= :return context)
+                 (js/return (transpile ret))
+                 (transpile ret))]
+      (apply js/block (conj statements* ret*)))))
 
 (defmacro emit-wrap [env & body]
   `(let [env# ~env]
@@ -505,24 +508,25 @@
         (emit-block subcontext statements ret)
         (when (and statements (= :expr context)) (emits "})()"))))))
 
-(defmethod emit :let
-  [{:keys [bindings statements ret env loop]}]
+(defmethod transpile :let
+  [{:keys [bindings env loop] :as ast}]
   (let [context (:context env)]
-    (when (= :expr context) (emits "(function (){"))
     (binding [*lexical-renames* (into *lexical-renames*
                                       (when (= :statement context)
                                         (map #(vector (System/identityHashCode %)
                                                       (gensym (str (:name %) "-")))
                                              bindings)))]
-      (doseq [{:keys [init] :as binding} bindings]
-        (emitln "var " (munge binding) " = " init ";"))
-      (when loop (emitln "while(true){"))
-      (emit-block (if (= :expr context) :return context) statements ret)
-      (when loop
-        (emitln "break;")
-        (emitln "}")))
-    ;(emits "}")
-    (when (= :expr context) (emits "})()"))))
+      (let [vars (apply js/block (map (fn [{:keys [init] :as binding}]
+                                   (js/var (munge binding) (transpile init)))
+                                 bindings))
+            body (transpile-block (if (= :expr context) :return context) ast)
+            block (if loop
+                   (js/while true
+                     (js/block vars body (js/break)))
+                   (js/block vars body))]
+        (if (= :expr context)
+          (js/scope block)
+          block)))))
 
 (defmethod emit :recur
   [{:keys [frame exprs env]}]

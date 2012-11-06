@@ -1,6 +1,6 @@
 (ns cljs.js
-  (:refer-clojure :exclude (name boolean empty))
-  (:import [com.google.javascript.rhino Node IR])
+  (:refer-clojure :exclude (name boolean empty while))
+  (:import [com.google.javascript.rhino Token Node IR])
   (:import com.google.javascript.jscomp.CodePrinter$Builder))
 
 ;; Reflection voo-doo. This is only necessary until the entire emit phase is done.
@@ -170,3 +170,19 @@
 
 (defn return [x]
   (IR/returnNode (nodify x)))
+
+(defn break []
+  (IR/breakNode))
+
+(defn continue []
+  (IR/continueNode))
+
+;;TODO: Why doesn't IR have a whileNode method?
+(defn while [test & body]
+  (Node. Token/WHILE (nodify test) (apply block body)))
+
+(defn var
+  ([name]
+   (IR/var (nodify name)))
+  ([name val]
+   (IR/var (nodify name) (nodify val))))
