@@ -188,7 +188,7 @@
 (defmethod emit :default
   [{:keys [env op] :as ast}]
   (let [node (transpile ast)]
-    (if (#{:meta :map :vector :set :new :dot} op)
+    (if (#{:meta :map :vector :set :new :dot :set!} op)
       (emit-wrap env node)
       (emit-source node))))
 
@@ -643,9 +643,9 @@
   [{:keys [ctor args]}]
   (apply js/new (transpile ctor) (map transpile args)))
 
-(defmethod emit :set!
-  [{:keys [target val env]}]
-  (emit-wrap env (emits target " = " val)))
+(defmethod transpile :set!
+  [{:keys [target val]}]
+  (js/assign (transpile target) (transpile val)))
 
 (defmethod emit :ns
   [{:keys [name requires uses requires-macros env]}]
