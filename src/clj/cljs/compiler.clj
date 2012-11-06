@@ -188,7 +188,7 @@
 (defmethod emit :default
   [{:keys [env op] :as ast}]
   (let [node (transpile ast)]
-    (if (#{:meta :map :vector :set :new} op)
+    (if (#{:meta :map :vector :set :new :dot} op)
       (emit-wrap env node)
       (emit-source node))))
 
@@ -701,14 +701,10 @@
     (emitln "}")
     (emitln "})")))
 
-(defmethod emit :dot
-  [{:keys [target field method args env]}]
-  (emit-wrap env
-             (if field
-               (emits target "." (munge field #{}))
-               (emits target "." (munge method #{}) "("
-                      (comma-sep args)
-                      ")"))))
+(defmethod transpile :dot
+  [{:keys [target field method args]}]
+  (let [dot (js/dot (transpile target) (munge (or field method) #{}))]
+    (if field dot (js/call dot))))
 
 (defmethod emit :js
   [{:keys [env code segs args]}]
