@@ -175,6 +175,13 @@
     (emits statements))
   (emit ret))
 
+(defn transpile-block [{:keys [statements ret env]}]
+  (let [statements* (mapv transpile statements)
+        ret* (if (= :return (:context env))
+               (js/return (transpile ret))
+               (transpile ret))]
+    (apply js/block (conj statements* ret*))))
+
 (defmacro emit-wrap [env & body]
   `(let [env# ~env]
      (when (= :return (:context env#)) (emits "return "))
@@ -462,14 +469,12 @@
       (when loop-locals
         (emitln ";})(" (comma-sep loop-locals) "))")))))
 
-(defmethod emit :do
-  [{:keys [statements ret env]}]
-  (let [context (:context env)]
-    (when (and statements (= :expr context)) (emits "(function (){"))
-    ;(when statements (emitln "{"))
-    (emit-block context statements ret)
-    ;(when statements (emits "}"))
-    (when (and statements (= :expr context)) (emits "})()"))))
+(defmethod transpile :do
+  [{:keys [env] :as ast}]
+  (let [block (transpile-block ast)]
+    (if (= :expr (:context env))
+      (js/scope block)
+      block)))
 
 (defmethod emit :try*
   [{:keys [env try catch name finally]}]

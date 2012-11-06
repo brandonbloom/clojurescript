@@ -167,3 +167,6 @@
 
 (defn new [ctor & args]
   (IR/newNode (nodify ctor) (into-array Node (map nodify args))))
+
+(defn return [x]
+  (IR/returnNode (nodify x)))
