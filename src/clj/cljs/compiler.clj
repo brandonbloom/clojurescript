@@ -190,7 +190,7 @@
   (let [node (transpile ast)]
     (if (#{:meta :map :vector :set} op)
       (emit-wrap node)
-      node)))
+      (emit-source node))))
 
 (defmethod emit :no-op [m])
 
@@ -294,11 +294,12 @@
       (ifop test* (transpile then))
       (ifop test* (transpile then) (transpile else)))))
 
-(defmethod emit :throw
+(defmethod transpile :throw
   [{:keys [throw env]}]
-  (if (= :expr (:context env))
-    (emits "(function(){throw " throw "})()")
-    (emitln "throw " throw ";")))
+  (let [throw* (js/throw (transpile throw))]
+    (if (= :expr (:context env))
+      (js/scope throw*)
+      throw*)))
 
 (defn emit-comment
   "Emit a nicely formatted comment string."

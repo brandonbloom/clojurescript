@@ -96,11 +96,15 @@
 (defmethod nodify java.util.regex.Pattern [x]
   (regexp x))
 
+(defn dot [target prop]
+  (let [prop* (if (symbol? prop) (str prop) prop)]
+    (IR/getprop (nodify target) (nodify prop*))))
+
 (defn name [x]
   (loop [[obj & props] (clojure.string/split (str x) #"\.")
          node (IR/name obj)]
     (if props
-      (recur props (IR/getprop node (IR/string (first props))))
+      (recur props (dot node (IR/string (first props))))
       node)))
 
 (defmethod nodify clojure.lang.Symbol [x]
@@ -127,6 +131,27 @@
 (defn hook [test then else]
   (IR/hook (nodify test) (nodify then) (nodify else)))
 
+(defn throw [x]
+  (IR/throwNode (nodify x)))
+
+(defn param-list [params]
+  (IR/paramList (into-array Node (map nodify params))))
+
+(defn block [& statements]
+  (IR/block (into-array Node (map nodify statements))))
+
+(defn function [name params & body]
+  (IR/function (nodify name)
+               (if (node? params)
+                 params
+                 (param-list (map nodify params)))
+               (apply block body)))
+
+(defn lambda [params & body]
+  (apply function (name "") params body))
+
+(defn scope [& body]
+  (call (apply lambda [] body)))
 
 (comment
 
