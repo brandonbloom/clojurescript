@@ -118,6 +118,16 @@
                              (IR/propdef (IR/stringKey (str k)) (nodify v)))))]
     (IR/objectlit (into-array Node propdefs))))
 
+(defn if
+  ([test then]
+   (IR/ifNode (nodify test) (nodify then)))
+  ([test then else]
+   (IR/ifNode (nodify test) (nodify then) (nodify else))))
+
+(defn hook [test then else]
+  (IR/hook (nodify test) (nodify then) (nodify else)))
+
+
 (comment
 
 (defn go [node]

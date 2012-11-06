@@ -284,18 +284,15 @@
             (not (or (and (string? form) (= form ""))
                      (and (number? form) (zero? form)))))))))
 
-(defmethod emit :if
+(defmethod transpile :if
   [{:keys [test then else env unchecked]}]
-  (let [context (:context env)
-        checked (not (or unchecked (safe-test? test)))]
-    (if (= :expr context)
-      (emits "(" (when checked "cljs.core.truth_") "(" test ")?" then ":" else ")")
-      (do
-        (if checked
-          (emitln "if(cljs.core.truth_(" test "))")
-          (emitln "if(" test ")"))
-        (emitln "{" then "} else")
-        (emitln "{" else "}")))))
+  (let [ifop (if (= :expr (:context env)) js/hook js/if)
+        test* (if (not (or unchecked (safe-test? test)))
+                (js/call 'cljs.core.truth_ (transpile test))
+                (transpile test))]
+    (if else
+      (ifop test* (transpile then))
+      (ifop test* (transpile then) (transpile else)))))
 
 (defmethod emit :throw
   [{:keys [throw env]}]
