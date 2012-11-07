@@ -628,14 +628,14 @@
   (transpile-wrap env
     (js/assign (transpile target) (transpile val))))
 
-(defmethod emit :ns
+(defmethod transpile :ns
   [{:keys [name requires uses requires-macros]}]
   (swap! ns-first-segments conj (first (string/split (str name) #"\.")))
-  (emitln "goog.provide('" (munge name) "');")
-  (when-not (= name 'cljs.core)
-    (emitln "goog.require('cljs.core');"))
-  (doseq [lib (into (vals requires) (distinct (vals uses)))]
-    (emitln "goog.require('" (munge lib) "');")))
+  (js/block
+    (js/call 'goog.provide (munge (str name)))
+    (for [lib (distinct (concat (when (not= name 'cljs.core) ['cljs.core])
+                                (vals requires) (vals uses)))]
+      (js/call 'goog.require (munge (str lib))))))
 
 (defmethod emit :deftype*
   [{:keys [t fields pmasks]}]
