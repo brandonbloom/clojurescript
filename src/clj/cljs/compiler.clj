@@ -471,34 +471,16 @@
       (js/scope block)
       block)))
 
-(defmethod emit :try*
+(defmethod transpile :try*
   [{:keys [env try catch name finally]}]
-  (let [context (:context env)
-        subcontext (if (= :expr context) :return context)]
-    (if (or name finally)
-      (do
-        (when (= :expr context) (emits "(function (){"))
-        (emits "try{")
-        (let [{:keys [statements ret]} try]
-          (emit-block subcontext statements ret))
-        (emits "}")
-        (when name
-          (emits "catch (" (munge name) "){")
-          (when catch
-            (let [{:keys [statements ret]} catch]
-              (emit-block subcontext statements ret)))
-          (emits "}"))
-        (when finally
-          (let [{:keys [statements ret]} finally]
-            (assert (not= :constant (:op ret)) "finally block cannot contain constant")
-            (emits "finally {")
-            (emit-block subcontext statements ret)
-            (emits "}")))
-        (when (= :expr context) (emits "})()")))
-      (let [{:keys [statements ret]} try]
-        (when (and statements (= :expr context)) (emits "(function (){"))
-        (emit-block subcontext statements ret)
-        (when (and statements (= :expr context)) (emits "})()"))))))
+  (when finally
+    (assert (not= :constant (-> finally :ret :op)) "finally block cannot contain constant"))
+  (let [node (js/try (transpile-block try)
+                     (when catch (js/catch (munge name) (transpile-block catch)))
+                     (when finally (transpile-block finally)))]
+    (if (= :expr (:context env))
+      (js/scope node)
+      node)))
 
 (defmethod transpile :let
   [{:keys [bindings env loop] :as ast}]

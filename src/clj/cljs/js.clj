@@ -179,10 +179,20 @@
 
 ;;TODO: Why doesn't IR have a whileNode method?
 (defn while [test & body]
-  (Node. Token/WHILE (nodify test) (apply block body)))
+  (Node. Token/WHILE (nodify test) (block body)))
 
 (defn var
   ([name]
    (IR/var (nodify name)))
   ([name val]
    (IR/var (nodify name) (nodify val))))
+
+(defn try [try catch finally]
+  (cond
+    (and catch finally) (IR/tryCatchFinally try catch finally)
+    catch (IR/tryCatch try catch)
+    finally (IR/tryFinally try finally)
+    :else try))
+
+(defn catch [name & body]
+  (IR/catchNode (nodify name) (block body)))
