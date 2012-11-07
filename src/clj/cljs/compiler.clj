@@ -199,17 +199,14 @@
 (defmethod emit :no-op [m])
 
 (defmethod transpile :var
-  [{:keys [info]}]
-  (let [n (:name info)
-        n (if (= (namespace n) "js")
-            (name n)
-            info)]
-    (js/name (munge n))))
-
-(defmethod emit :var
-  [{:keys [env] :as ast}]
-  (when-not (= :statement (:context env))
-    (emit-wrap env (transpile ast))))
+  [{:keys [env info]}]
+  (if (= :statement (:context env))
+    (js/empty)
+    (let [n (:name info)
+          n (if (= (namespace n) "js")
+              (name n)
+              info)]
+      (transpile-wrap env (js/name (munge n))))))
 
 (defmethod transpile :meta
   [{:keys [env expr meta]}]
@@ -257,13 +254,10 @@
                (apply js/array (map transpile items))))))
 
 (defmethod transpile :constant
-  [{:keys [form]}]
-  (constant-node form))
-
-(defmethod emit :constant
-  [{:keys [form env]}]
-  (when-not (= :statement (:context env))
-    (emit-wrap env (emit-constant form))))
+  [{:keys [env form]}]
+  (if (= :statement (:context env))
+    (js/empty)
+    (transpile-wrap env (constant-node form))))
 
 (defn get-tag [e]
   (or (-> e :tag)
@@ -514,9 +508,9 @@
                                         (map #(vector (System/identityHashCode %)
                                                       (gensym (str (:name %) "-")))
                                              bindings)))]
-      (let [vars (apply js/block (map (fn [{:keys [init] :as binding}]
-                                   (js/var (munge binding) (transpile init)))
-                                 bindings))
+      (let [vars (js/block (map (fn [{:keys [init] :as binding}]
+                             (js/var (munge binding) (transpile init)))
+                           bindings))
             body (transpile-block ast)
             block (if loop
                    (js/while true
