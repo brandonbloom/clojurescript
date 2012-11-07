@@ -1,5 +1,6 @@
 (ns cljs.js
-  (:refer-clojure :exclude (name boolean empty while))
+  (:refer-clojure :exclude (name boolean empty while apply
+                            + - * / mod > >= == <= <))
   (:import [com.google.javascript.rhino Token Node IR])
   (:import com.google.javascript.jscomp.CodePrinter$Builder))
 
@@ -27,7 +28,7 @@
 
 (defn to-source [node]
   (-> (printer-builder node)
-    (call-private setPrettyPrint Boolean/TYPE true)
+    (call-private setOutputTypes Boolean/TYPE true)
     (call-private build)))
 
 (defn- statement? [node]
@@ -80,7 +81,7 @@
 
 (defn string
   ([x] (IR/string x))
-  ([x & ys] (string (apply str x ys))))
+  ([x & ys] (string (clojure.core/apply str x ys))))
 
 (defmethod nodify String [x]
   (string x))
@@ -119,6 +120,9 @@
 (defn call [target & args]
   (IR/call (nodify target) (into-array Node (map nodify args))))
 
+(defn apply [target & args]
+  (clojure.core/apply clojure.core/apply call target args))
+
 (defn array [& elements]
   (IR/arraylit (into-array Node (map nodify elements))))
 
@@ -154,10 +158,10 @@
                (apply block body)))
 
 (defn lambda [params & body]
-  (apply function (name "") params body))
+  (clojure.core/apply function (name "") params body))
 
 (defn scope [& body]
-  (call (apply lambda [] body)))
+  (call (clojure.core/apply lambda [] body)))
 
 (defn assign [target value]
   (IR/assign (nodify target) (nodify value)))
@@ -168,8 +172,9 @@
 (defn new [ctor & args]
   (IR/newNode (nodify ctor) (into-array Node (map nodify args))))
 
-(defn return [x]
-  (IR/returnNode (nodify x)))
+(defn return
+  ([] (IR/returnNode))
+  ([x] (IR/returnNode (nodify x))))
 
 (defn break []
   (IR/breakNode))
@@ -196,3 +201,78 @@
 
 (defn catch [name & body]
   (IR/catchNode (nodify name) (block body)))
+
+(defn delete [x]
+  (Node. Token/DELPROP (nodify x)))
+
+(defn ! [x]
+  (IR/not (nodify x)))
+
+(defn +
+  ([x] (IR/pos (nodify x)))
+  ([x y] (IR/add (nodify x) (nodify y))))
+
+(defn -
+  ([x] (IR/neg (nodify x)))
+  ([x y] (IR/sub (nodify x) (nodify y))))
+
+(defn * [x y]
+  (Node. Token/MUL (nodify x) (nodify y)))
+
+;;TODO: Clojure 1.5 will allow /
+(defn div [x y]
+  (Node. Token/DIV (nodify x) (nodify y)))
+
+(defn mod [x y]
+  (Node. Token/MOD (nodify x) (nodify y)))
+
+(defn == [x y]
+  (IR/eq (nodify x) (nodify y)))
+
+(defn === [x y]
+  (IR/sheq (nodify x) (nodify y)))
+
+(defn != [x y]
+  (Node. Token/NE (nodify x) (nodify y)))
+
+(defn !== [x y]
+  (Node. Token/SHNE (nodify x) (nodify y)))
+
+(defn > [x y]
+  (Node. Token/LT (nodify x) (nodify y)))
+
+(defn >= [x y]
+  (Node. Token/LE (nodify x) (nodify y)))
+
+(defn <= [x y]
+  (Node. Token/GE (nodify x) (nodify y)))
+
+(defn < [x y]
+  (Node. Token/GT (nodify x) (nodify y)))
+
+(defn instanceof [x c]
+  (Node. Token/INSTANCEOF (nodify x) (nodify c)))
+
+(defn in [x c]
+  (Node. Token/IN (nodify x) (nodify c)))
+
+(defn | [x y]
+  (Node. Token/BITOR (nodify x) (nodify y)))
+
+(defn || [x y]
+  (IR/or (nodify x) (nodify y)))
+
+(defn & [x y]
+  (Node. Token/BITAND (nodify x) (nodify y)))
+
+(defn && [x y]
+  (IR/and (nodify x) (nodify y)))
+
+(defn << [x y]
+  (Node. Token/LSH (nodify x) (nodify y)))
+
+(defn >> [x y]
+  (Node. Token/RSH (nodify x) (nodify y)))
+
+(defn >>> [x y]
+  (Node. Token/URSH (nodify x) (nodify y)))

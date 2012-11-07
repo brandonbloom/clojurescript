@@ -148,11 +148,11 @@
 
 (defmethod constant-node clojure.lang.PersistentList [x]
   (wrap-meta x
-    (apply js/call 'cljs.core.list x)))
+    (js/apply 'cljs.core.list x)))
 
 (defmethod constant-node clojure.lang.Cons [x]
   (wrap-meta x
-    (apply js/call 'cljs.core.list x)))
+    (js/apply 'cljs.core.list x)))
 
 (defmethod constant-node clojure.lang.IPersistentVector [x]
   (wrap-meta x
@@ -160,7 +160,7 @@
 
 (defmethod constant-node clojure.lang.IPersistentMap [x]
   (wrap-meta x
-    (apply js/call 'cljs.core.hash_map (map constant-node (apply concat x)))))
+    (js/apply 'cljs.core.hash_map (map constant-node (apply concat x)))))
 
 (defmethod constant-node clojure.lang.PersistentHashSet [x]
   (wrap-meta x
@@ -196,7 +196,7 @@
 (defmethod emit :default [ast]
   (-> ast transpile emit-source))
 
-(defmethod emit :no-op [m])
+(defmethod transpile :no-op [ast] (js/empty))
 
 (defmethod transpile :var
   [{:keys [env info]}]
@@ -523,16 +523,22 @@
   (symbol (str (-> (str psym) (.replace \. \$) (.replace \/ \$)) "$")))
 
 (def unary-ops
-  '#{- + delete !}) ; omits ~
+  {'- js/-, '+ js/+, 'delete js/delete, '! js/!}) ; omits ['~ js/bit-not]
 
 (def binary-ops
-  '#{* / % + - << >> >>> < > <= >= instanceof in == != === & | && ||}) ; omits ^
+  {'* js/*, '/ js/div, '% js/mod, '+ js/+, '- js/-,
+   '< js/<, '> js/>, '<= js/<= '>= js/>=,
+   '<< js/<<, '>> js/>>, '>>> js/>>>, '& js/&, '| js/|, '&& js/&&, '|| js/||
+   'instanceof js/instanceof, 'in js/in, '== js/==, '!= js/!=, '=== 'js/===}) ; omits ^
 
 ;;TODO: xor and bitwise not
+;; mod seems wierd too... these operator symbols seems to be a failed experiment...
 
-(defmethod emit :invoke
+(defmethod transpile :invoke
   [{:keys [f args env] :as expr}]
   (let [info (:info f)
+        nm (:name info)
+        sym (when nm (symbol (name nm)))
         fn? (and ana/*cljs-static-fns*
                  (not (:dynamic info))
                  (:fn-var info))
@@ -580,43 +586,47 @@
                              (fn [name] (symbol (str (munge name) ".cljs$lang$arity$" arity)))) nil]
                  [f nil]))))
           [f nil])]
-    (emit-wrap env
+    (transpile-wrap env
       (cond
        opt-not?
-       (emits "!(" (first args) ")")
+       (js/! (transpile (first args)))
 
        proto?
        (let [pimpl (str (munge (protocol-prefix protocol))
                         (munge (name (:name info))) "$arity$" (count args))]
-         (emits (first args) "." pimpl "(" (comma-sep args) ")"))
+         (js/apply (js/dot (transpile (first args)) (js/name pimpl))
+                   (map transpile args)))
 
        keyword?
-       (emits "(new cljs.core.Keyword(" f ")).call(" (comma-sep (cons "null" args)) ")")
-       
+       (js/apply (js/dot (js/new 'cljs.core.Keyword (transpile f)) 'call)
+                 nil (map transpile args))
+
        variadic-invoke
-       (let [mfa (:max-fixed-arity variadic-invoke)]
-        (emits f "(" (comma-sep (take mfa args))
-               (when-not (zero? mfa) ",")
-               "cljs.core.array_seq([" (comma-sep (drop mfa args)) "], 0))"))
+       (let [[fixed-args variable-args] (split-at (:max-fixed-arity variadic-invoke) args)]
+         (js/apply (transpile f)
+                   (conj (mapv transpile fixed-args)
+                         (js/call 'cljs.core.array_seq
+                                  (apply js/array (map transpile variable-args)) 0))))
 
-       (and js? (unary-ops (symbol (name (:name info)))) (= (count args) 1))
-       (emits "(" (name (:name info)) " (" (first args) "))")
+       (and js? (= (count args) 1) (unary-ops sym))
+       (apply (unary-ops sym) (map transpile args))
 
-       (and js? (binary-ops (symbol (name (:name info)))) (= (count args) 2))
-       (emits "((" (first args) ")" (name (:name info)) "(" (second args) "))")
+       (and js? (= (count args) 2) (binary-ops sym))
+       (apply (binary-ops sym) (map transpile args))
 
-       (and js? (= (symbol (name (:name info))) '?) (= (count args) 3))
-       (let [[test then else] args]
-         (emits "((" test ") ? (" then ") : (" else "))"))
-       
+       (and js? (= (count args) 3) (= sym '?))
+       (apply js/hook (map transpile args))
+
        (or fn? js? goog?)
-       (emits f "(" (comma-sep args)  ")")
-       
+       (js/apply (transpile f) (map transpile args))
+
        :else
        (if (and ana/*cljs-static-fns* (= (:op f) :var))
-         (let [fprop (str ".cljs$lang$arity$" (count args))]
-           (emits "(" f fprop " ? " f fprop "(" (comma-sep args) ") : " f ".call(" (comma-sep (cons "null" args)) "))"))
-         (emits f ".call(" (comma-sep (cons "null" args)) ")"))))))
+         (let [fprop (js/dot (transpile f) (js/name (str "cljs$lang$arity$" (count args))))]
+           (js/hook fprop
+             (js/apply fprop (map transpile args))
+             (js/apply (js/dot fprop 'call) nil (map transpile args))))
+         (js/apply (js/dot (transpile f) 'call) nil (map transpile args)))))))
 
 (defmethod transpile :new
   [{:keys [env ctor args]}]
