@@ -144,7 +144,7 @@
   (IR/paramList (into-array Node (map nodify params))))
 
 (defn block [& statements]
-  (IR/block (into-array Node (map statementize statements))))
+  (IR/block (into-array Node (map statementize (flatten statements)))))
 
 (defn function [name params & body]
   (IR/function (nodify name)
