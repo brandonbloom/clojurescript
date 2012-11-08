@@ -71,46 +71,6 @@
 (defn- comma-sep [xs]
   (interpose "," xs))
 
-(defmulti emit :op)
-
-(defn emits [& xs]
-  (doseq [x xs]
-    (cond
-      (nil? x) nil
-      (map? x) (emit x)
-      (seq? x) (apply emits x)
-      (fn? x)  (x)
-      :else (do
-              (let [s (print-str x)]
-                (when *position*
-                  (swap! *position* (fn [[line column]]
-                                      [line (+ column (count s))])))
-                (print s)))))
-  nil)
-
-(defn emitln [& xs]
-  (apply emits xs)
-  ;; Prints column-aligned line number comments; good test of *position*.
-  ;(when *position*
-  ;  (let [[line column] @*position*]
-  ;    (print (apply str (concat (repeat (- 120 column) \space) ["// " (inc line)])))))
-  (println)
-  (when *position*
-    (swap! *position* (fn [[line column]]
-                        [(inc line) 0])))
-  nil)
-
-(defn ^String emit-str [expr]
-  (with-out-str (emit expr)))
-
-(defn emit-provide [sym]
-  (when-not (or (nil? *provided*) (contains? @*provided* sym))
-    (swap! *provided* conj sym)
-    (emitln "goog.provide('" (munge sym) "');")))
-
-(defn emit-source [node]
-  (emits (js/to-source node)))
-
 (defmulti constant-node class)
 
 (defmethod constant-node :default [x]
@@ -163,32 +123,21 @@
   (wrap-meta x
     (js/call 'cljs.core.set (apply js/array (map constant-node x)))))
 
-(defn emit-constant [x]
-  (emit-source (constant-node x)))
-
-(defn emit-block
-  [statements ret]
-  (when statements
-    (emits statements))
-  (emit ret))
+(defmulti transpile :op)
 
 (defn transpile-block [{:keys [statements ret]}]
   (js/block (if statements statements []) ret))
-
-(defmacro emit-wrap [env & body]
-  `(let [env# ~env]
-     (when (= :return (:context env#)) (emits "return "))
-     (let [x# (do ~@body)]
-       (when (js/node? x#)
-         (emit-source x#)))
-     (when-not (= :expr (:context env#)) (emitln ";"))))
 
 (defn transpile-wrap [env node]
   (if (= :return (:context env))
     (js/return node)
     node))
 
-(defmulti transpile :op)
+(defn emit [node]
+  (println (js/to-source (transpile node))))
+
+(defn ^String emit-str [expr]
+  (with-out-str (emit expr)))
 
 ;;TODO: This is a dirty hack being in this file
 (defmethod js/nodify :default [x]
@@ -196,9 +145,6 @@
     (map? x) (transpile x)
     (seq? x) (map js/nodify x)
     :else x))
-
-(defmethod emit :default [ast]
-  (-> ast transpile emit-source))
 
 (defmethod transpile :no-op [ast] (js/empty))
 
