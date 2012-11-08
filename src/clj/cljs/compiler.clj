@@ -322,7 +322,7 @@
     (js/empty)))
 
 (defn- transpile-apply-to
-  [{:keys [name params env]}]
+  [{:keys [name params]}]
   (let [arglist (gensym "arglist__")
         delegate-name (symbol (str (munge name) "__delegate"))
         params (map munge params)]
@@ -338,7 +338,7 @@
       (js/return (js/apply delegate-name params)))))
 
 (defn transpile-fn-method
-  [{:keys [type name variadic params env recurs max-fixed-arity] :as ast}]
+  [{:keys [type name params env recurs] :as ast}]
   (transpile-wrap env
     (js/function (js/name (munge name)) (map munge params)
       (if type (js/var 'self__ (js/this)) [])
@@ -346,9 +346,6 @@
         (if recurs
           (js/while true body (js/break))
           body)))))
-
-(defn- emit-fn-method [ast]
-  (emit-source (transpile-fn-method ast)))
 
 (defn- transpile-variadic-fn-method
   [{:keys [type name variadic params env recurs max-fixed-arity] :as f}]
@@ -381,11 +378,68 @@
         (js/assign (symbol (str mname ".cljs$lang$arity$variadic")) delegate-name)
         (js/return mname)))))
 
-(defn emit-variadic-fn-method [f]
+(defn- emit-fn-method [ast]
+  (emit-source (transpile-fn-method ast)))
+
+(defn- emit-variadic-fn-method [f]
   (emit-source (transpile-variadic-fn-method f)))
 
+(defn- emit-multi-arity-fn
+  [{:keys [name env methods max-fixed-arity variadic]}]
+  (let [has-name? (and name true)
+        name (or name (gensym))
+        mname (munge name)
+        maxparams (map munge (apply max-key count (map :params methods)))
+        mmap (into {}
+               (map (fn [method]
+                      [(munge (symbol (str mname "__" (count (:params method)))))
+                       method])
+                    methods))
+        ms (sort-by #(-> % second :params count) (seq mmap))]
+    (when (= :return (:context env))
+      (emits "return "))
+    (emitln "(function() {")
+    (emitln "var " mname " = null;")
+    (doseq [[n meth] ms]
+      (emits "var " n " = ")
+      (if (:variadic meth)
+        (emit-variadic-fn-method meth)
+        (emit-fn-method meth))
+      (emitln ";"))
+      (emitln mname " = function(" (comma-sep (if variadic
+                                                (concat (butlast maxparams) ['var_args])
+                                                maxparams)) "){")
+    (when variadic
+      (emitln "var " (last maxparams) " = var_args;"))
+    (emitln "switch(arguments.length){")
+    (doseq [[n meth] ms]
+      (if (:variadic meth)
+        (do (emitln "default:")
+            (emitln "return " n ".cljs$lang$arity$variadic("
+                    (comma-sep (butlast maxparams))
+                    (when (> (count maxparams) 1) ", ")
+                    "cljs.core.array_seq(arguments, " max-fixed-arity "));"))
+        (let [pcnt (count (:params meth))]
+          (emitln "case " pcnt ":")
+          (emitln "return " n ".call(this" (if (zero? pcnt) nil
+                                               (list "," (comma-sep (take pcnt maxparams)))) ");"))))
+    (emitln "}")
+    (emitln "throw(new Error('Invalid arity: ' + arguments.length));")
+    (emitln "};")
+    (when variadic
+      (emitln mname ".cljs$lang$maxFixedArity = " max-fixed-arity ";")
+      (emitln mname ".cljs$lang$applyTo = " (some #(let [[n m] %] (when (:variadic m) n)) ms) ".cljs$lang$applyTo;"))
+    (when has-name?
+      (doseq [[n meth] ms]
+        (let [c (count (:params meth))]
+          (if (:variadic meth)
+            (emitln mname ".cljs$lang$arity$variadic = " n ".cljs$lang$arity$variadic;")
+            (emitln mname ".cljs$lang$arity$" c " = " n ";")))))
+    (emitln "return " mname ";")
+    (emitln "})()")))
+
 (defmethod emit :fn
-  [{:keys [name env methods max-fixed-arity variadic recur-frames loop-lets]}]
+  [{:keys [name env methods variadic recur-frames loop-lets] :as f}]
   ;;fn statements get erased, serve no purpose and can pollute scope if named
   (when-not (= :statement (:context env))
     (let [loop-locals (->> (concat (mapcat :params (filter #(and % @(:flag %)) recur-frames))
@@ -402,57 +456,7 @@
         (if variadic
           (emit-variadic-fn-method (assoc (first methods) :name name))
           (emit-fn-method (assoc (first methods) :name name)))
-        (let [has-name? (and name true)
-              name (or name (gensym))
-              mname (munge name)
-              maxparams (map munge (apply max-key count (map :params methods)))
-              mmap (into {}
-                     (map (fn [method]
-                            [(munge (symbol (str mname "__" (count (:params method)))))
-                             method])
-                          methods))
-              ms (sort-by #(-> % second :params count) (seq mmap))]
-          (when (= :return (:context env))
-            (emits "return "))
-          (emitln "(function() {")
-          (emitln "var " mname " = null;")
-          (doseq [[n meth] ms]
-            (emits "var " n " = ")
-            (if (:variadic meth)
-              (emit-variadic-fn-method meth)
-              (emit-fn-method meth))
-            (emitln ";"))
-            (emitln mname " = function(" (comma-sep (if variadic
-                                                      (concat (butlast maxparams) ['var_args])
-                                                      maxparams)) "){")
-          (when variadic
-            (emitln "var " (last maxparams) " = var_args;"))
-          (emitln "switch(arguments.length){")
-          (doseq [[n meth] ms]
-            (if (:variadic meth)
-              (do (emitln "default:")
-                  (emitln "return " n ".cljs$lang$arity$variadic("
-                          (comma-sep (butlast maxparams))
-                          (when (> (count maxparams) 1) ", ")
-                          "cljs.core.array_seq(arguments, " max-fixed-arity "));"))
-              (let [pcnt (count (:params meth))]
-                (emitln "case " pcnt ":")
-                (emitln "return " n ".call(this" (if (zero? pcnt) nil
-                                                     (list "," (comma-sep (take pcnt maxparams)))) ");"))))
-          (emitln "}")
-          (emitln "throw(new Error('Invalid arity: ' + arguments.length));")
-          (emitln "};")
-          (when variadic
-            (emitln mname ".cljs$lang$maxFixedArity = " max-fixed-arity ";")
-            (emitln mname ".cljs$lang$applyTo = " (some #(let [[n m] %] (when (:variadic m) n)) ms) ".cljs$lang$applyTo;"))
-          (when has-name?
-            (doseq [[n meth] ms]
-              (let [c (count (:params meth))]
-                (if (:variadic meth)
-                  (emitln mname ".cljs$lang$arity$variadic = " n ".cljs$lang$arity$variadic;")
-                  (emitln mname ".cljs$lang$arity$" c " = " n ";")))))
-          (emitln "return " mname ";")
-          (emitln "})()")))
+        (emit-multi-arity-fn f))
       (when loop-locals
         (emitln ";})(" (comma-sep loop-locals) "))")))))
 
