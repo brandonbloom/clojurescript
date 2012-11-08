@@ -53,6 +53,9 @@
 (defn null []
   (IR/nullNode))
 
+(defn this []
+  (IR/thisNode))
+
 (defmethod nodify nil [x]
   (null))
 

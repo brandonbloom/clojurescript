@@ -348,18 +348,18 @@
         (emitln "return " delegate-name "(" (string/join ", " params) ");")))
     (emits "})")))
 
-(defn emit-fn-method
-  [{:keys [type name variadic params statements ret env recurs max-fixed-arity]}]
-  (emit-wrap env
-             (emitln "(function " (munge name) "(" (comma-sep (map munge params)) "){")
-             (when type
-               (emitln "var self__ = this;"))
-             (when recurs (emitln "while(true){"))
-             (emit-block :return statements ret)
-             (when recurs
-               (emitln "break;")
-               (emitln "}"))
-             (emits "})")))
+(defn transpile-fn-method
+  [{:keys [type name variadic params env recurs max-fixed-arity] :as ast}]
+  (transpile-wrap env
+    (js/function (js/name (munge name)) (map munge params)
+      (if type (js/var 'self__ (js/this)) [])
+      (let [body (transpile-block ast)]
+        (if recurs
+          (js/while true body (js/break))
+          body)))))
+
+(defn emit-fn-method [ast]
+  (emit-source (transpile-fn-method ast)))
 
 (defn emit-variadic-fn-method
   [{:keys [type name variadic params statements ret env recurs max-fixed-arity] :as f}]
@@ -371,7 +371,7 @@
                (emitln "(function() { ")
                (emitln "var " delegate-name " = function (" (comma-sep params) "){")
                (when recurs (emitln "while(true){"))
-               (emit-block :return statements ret)
+               (emit-block statements ret)
                (when recurs
                  (emitln "break;")
                  (emitln "}"))
@@ -523,7 +523,7 @@
     (when (= :expr context) (emits "(function (){"))
     (doseq [{:keys [init] :as binding} bindings]
       (emitln "var " (munge binding) " = " init ";"))
-    (emit-block (if (= :expr context) :return context) statements ret)
+    (emit-block statements ret)
     (when (= :expr context) (emits "})()"))))
 
 (defn protocol-prefix [psym]
