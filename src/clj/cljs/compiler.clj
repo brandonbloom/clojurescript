@@ -493,14 +493,16 @@
                       (map js/assign params temps))
               (js/continue))))
 
-(defmethod emit :letfn
-  [{:keys [bindings statements ret env]}]
-  (let [context (:context env)]
-    (when (= :expr context) (emits "(function (){"))
-    (doseq [{:keys [init] :as binding} bindings]
-      (emitln "var " (munge binding) " = " init ";"))
-    (emit-block statements ret)
-    (when (= :expr context) (emits "})()"))))
+(defmethod transpile :letfn
+  [{:keys [bindings env] :as ast}]
+  (let [context (:context env)
+        node (js/block
+               (for [{:keys [init] :as binding} bindings]
+                 (js/var (munge binding) init))
+               (transpile-block ast))]
+    (if (= :expr context)
+      (js/scope node)
+      node)))
 
 (defn protocol-prefix [psym]
   (symbol (str (-> (str psym) (.replace \. \$) (.replace \/ \$)) "$")))
