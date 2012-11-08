@@ -133,11 +133,14 @@
                              (IR/propdef (IR/stringKey (str k)) (nodify v)))))]
     (IR/objectlit (into-array Node propdefs))))
 
+(defn block [& statements]
+  (IR/block (into-array Node (map statementize (flatten statements)))))
+
 (defn if
   ([test then]
-   (IR/ifNode (nodify test) (nodify then)))
+   (IR/ifNode (nodify test) (block then)))
   ([test then else]
-   (IR/ifNode (nodify test) (nodify then) (nodify else))))
+   (IR/ifNode (nodify test) (block then) (block else))))
 
 (defn hook
   ([test then] (hook test then nil))
@@ -150,15 +153,12 @@
 (defn param-list [params]
   (IR/paramList (into-array Node (map nodify params))))
 
-(defn block [& statements]
-  (IR/block (into-array Node (map statementize (flatten statements)))))
-
 (defn function [name params & body]
   (IR/function (nodify name)
                (if (and (node? params) (.isParamList params))
                  params
                  (param-list params))
-               (clojure.core/apply block body)))
+               (block body)))
 
 (defn lambda [params & body]
   (clojure.core/apply function (name "") params body))

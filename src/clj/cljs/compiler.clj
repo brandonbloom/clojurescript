@@ -321,32 +321,21 @@
         assign))
     (js/empty)))
 
-(defn emit-apply-to
+(defn- transpile-apply-to
   [{:keys [name params env]}]
   (let [arglist (gensym "arglist__")
-        delegate-name (str (munge name) "__delegate")
+        delegate-name (symbol (str (munge name) "__delegate"))
         params (map munge params)]
-    (emitln "(function (" arglist "){")
-    (doseq [[i param] (map-indexed vector (butlast params))]
-      (emits "var " param " = cljs.core.first(")
-      (dotimes [_ i] (emits "cljs.core.next("))
-      (emits arglist ")")
-      (dotimes [_ i] (emits ")"))
-      (emitln ";"))
-    (if (< 1 (count params))
-      (do
-        (emits "var " (last params) " = cljs.core.rest(")
-        (dotimes [_ (- (count params) 2)] (emits "cljs.core.next("))
-        (emits arglist)
-        (dotimes [_ (- (count params) 2)] (emits ")"))
-        (emitln ");")
-        (emitln "return " delegate-name "(" (string/join ", " params) ");"))
-      (do
-        (emits "var " (last params) " = ")
-        (emits "cljs.core.seq(" arglist ");")
-        (emitln ";")
-        (emitln "return " delegate-name "(" (string/join ", " params) ");")))
-    (emits "})")))
+    (js/lambda [arglist]
+      (for [[i param] (map-indexed vector (butlast params))]
+        (js/var param (js/call 'cljs.core.first
+                               (nth (iterate #(js/call 'cljs.core.next %) arglist) i))))
+      (if (< 1 (count params))
+        (js/var (last params) (js/call 'cljs.core.rest
+                                       (nth (iterate #(js/call 'cljs.core.next %) arglist)
+                                            (- (count params) 2))))
+        (js/var (last params) (js/call 'cljs.core.seq arglist)))
+      (js/return (js/apply delegate-name params)))))
 
 (defn transpile-fn-method
   [{:keys [type name variadic params env recurs max-fixed-arity] :as ast}]
@@ -358,46 +347,42 @@
           (js/while true body (js/break))
           body)))))
 
-(defn emit-fn-method [ast]
+(defn- emit-fn-method [ast]
   (emit-source (transpile-fn-method ast)))
 
-(defn emit-variadic-fn-method
-  [{:keys [type name variadic params statements ret env recurs max-fixed-arity] :as f}]
-  (emit-wrap env
-             (let [name (or name (gensym))
-                   mname (munge name)
-                   params (map munge params)
-                   delegate-name (str mname "__delegate")]
-               (emitln "(function() { ")
-               (emitln "var " delegate-name " = function (" (comma-sep params) "){")
-               (when recurs (emitln "while(true){"))
-               (emit-block statements ret)
-               (when recurs
-                 (emitln "break;")
-                 (emitln "}"))
-               (emitln "};")
+(defn- transpile-variadic-fn-method
+  [{:keys [type name variadic params env recurs max-fixed-arity] :as f}]
+  (transpile-wrap env
+    (let [name (or name (gensym))
+          mname (munge name)
+          params (map munge params)
+          delegate-name (symbol (str mname "__delegate"))
+          body (transpile-block f)]
+      (js/scope
+        (js/var delegate-name (js/lambda params
+                                (if recurs
+                                  (js/while true body (js/break))
+                                  body)))
+        (js/var mname (js/lambda (if variadic
+                                   (concat (butlast params) ['var_args])
+                                   params)
+                        (if type (js/var 'self__ (js/this)) [])
+                        (if variadic
+                          [(js/var (last params) (js/null))
+                           (js/if (js/call 'goog.isDef 'var_args)
+                             (js/assign (last params)
+                                        (js/call 'cljs.core.array_seq
+                                                 (js/call 'Array.prototype.slice.call 'arguments (dec (count params)))
+                                                 0)))]
+                          [])
+                        (js/return (js/apply (js/dot delegate-name 'call) (cons (js/this) params)))))
+        (js/assign (symbol (str mname ".cljs$lang$maxFixedArity")) max-fixed-arity)
+        (js/assign (symbol (str mname ".cljs$lang$applyTo")) (transpile-apply-to (assoc f :name name)))
+        (js/assign (symbol (str mname ".cljs$lang$arity$variadic")) delegate-name)
+        (js/return mname)))))
 
-               (emitln "var " mname " = function (" (comma-sep
-                                                      (if variadic
-                                                        (concat (butlast params) ['var_args])
-                                                        params)) "){")
-               (when type
-                 (emitln "var self__ = this;"))
-               (when variadic
-                 (emitln "var " (last params) " = null;")
-                 (emitln "if (goog.isDef(var_args)) {")
-                 (emitln "  " (last params) " = cljs.core.array_seq(Array.prototype.slice.call(arguments, " (dec (count params)) "),0);")
-                 (emitln "} "))
-               (emitln "return " delegate-name ".call(" (string/join ", " (cons "this" params)) ");")
-               (emitln "};")
-
-               (emitln mname ".cljs$lang$maxFixedArity = " max-fixed-arity ";")
-               (emits mname ".cljs$lang$applyTo = ")
-               (emit-apply-to (assoc f :name name))
-               (emitln ";")
-               (emitln mname ".cljs$lang$arity$variadic = " delegate-name ";")
-               (emitln "return " mname ";")
-               (emitln "})()"))))
+(defn emit-variadic-fn-method [f]
+  (emit-source (transpile-variadic-fn-method f)))
 
 (defmethod emit :fn
   [{:keys [name env methods max-fixed-arity variadic recur-frames loop-lets]}]
