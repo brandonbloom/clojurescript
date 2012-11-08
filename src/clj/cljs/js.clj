@@ -111,7 +111,7 @@
 
 (defn name [x]
   (loop [[obj & props] (clojure.string/split (str x) #"\.")
-         node (IR/name obj)]
+         node (if (= obj 'this) (this) (IR/name obj))]
     (if props
       (recur props (dot node (IR/string (first props))))
       node)))

@@ -88,9 +88,6 @@
                 (print s)))))
   nil)
 
-(defn ^String emit-str [expr]
-  (with-out-str (emit expr)))
-
 (defn emitln [& xs]
   (apply emits xs)
   ;; Prints column-aligned line number comments; good test of *position*.
@@ -629,20 +626,26 @@
                                 (vals requires) (vals uses)))]
       (js/call 'goog.require (munge (str lib))))))
 
-(defmethod emit :deftype*
+(defn provide! [sym]
+  (if (or (nil? *provided*) (contains? @*provided* sym))
+    []
+    (do
+      (swap! *provided* conj sym)
+      (js/call 'goog.provide (munge sym)))))
+
+(defmethod transpile :deftype*
   [{:keys [t fields pmasks]}]
   (let [fields (map munge fields)]
-    (emit-provide t)
-    (emitln "")
-    (emitln "/**")
-    (emitln "* @constructor")
-    (emitln "*/")
-    (emitln (munge t) " = (function (" (comma-sep fields) "){")
-    (doseq [fld fields]
-      (emitln "this." fld " = " fld ";"))
-    (doseq [[pno pmask] pmasks]
-      (emitln "this.cljs$lang$protocol_mask$partition" pno "$ = " pmask ";"))
-    (emitln "})")))
+    (provide! t)
+    ;TODO: JSType annotations
+    ;(emitln "/**")
+    ;(emitln "* @constructor")
+    ;(emitln "*/")
+    (js/assign (munge t) (js/lambda fields
+                           (for [fld fields]
+                             (js/assign (js/dot (js/this) fld) fld))
+                           (for [[pno pmask] pmasks]
+                             (js/assign (symbol (str "this.cljs$lang$protocol_mask$partition" pno "$")) pmask))))))
 
 (defmethod emit :defrecord*
   [{:keys [t fields pmasks]}]
