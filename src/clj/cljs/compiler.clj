@@ -644,40 +644,35 @@
     ;(emitln "* @constructor")
     ;(emitln "*/")
     (js/assign (munge t) (js/lambda fields
-                           (for [fld fields]
-                             (js/assign (js/dot (js/this) fld) fld))
-                           (for [[pno pmask] pmasks]
-                             (js/assign (symbol (str "this.cljs$lang$protocol_mask$partition" pno "$")) pmask))))))
+      (for [fld fields]
+        (js/assign (js/dot (js/this) fld) fld))
+      (for [[pno pmask] pmasks]
+        (js/assign (symbol (str "this.cljs$lang$protocol_mask$partition" pno "$")) pmask))))))
 
-(defmethod emit :defrecord*
+(defmethod transpile :defrecord*
   [{:keys [t fields pmasks]}]
   (let [fields (concat (map munge fields) '[__meta __extmap])]
-    (emit-provide t)
-    (emitln "")
-    (emitln "/**")
-    (emitln "* @constructor")
-    (doseq [fld fields]
-      (emitln "* @param {*} " fld))
-    (emitln "* @param {*=} __meta ")
-    (emitln "* @param {*=} __extmap")
-    (emitln "*/")
-    (emitln (munge t) " = (function (" (comma-sep fields) "){")
-    (doseq [fld fields]
-      (emitln "this." fld " = " fld ";"))
-    (doseq [[pno pmask] pmasks]
-      (emitln "this.cljs$lang$protocol_mask$partition" pno "$ = " pmask ";"))
-    (emitln "if(arguments.length>" (- (count fields) 2) "){")
-    (emitln "this.__meta = __meta;")
-    (emitln "this.__extmap = __extmap;")
-    (emitln "} else {")
-    (emits "this.__meta=")
-    (emit-constant nil)
-    (emitln ";")
-    (emits "this.__extmap=")
-    (emit-constant nil)
-    (emitln ";")
-    (emitln "}")
-    (emitln "})")))
+    (provide! t)
+    ;TODO: JSType annotations
+    ;(emitln "/**")
+    ;(emitln "* @constructor")
+    ;(doseq [fld fields]
+    ;  (emitln "* @param {*} " fld))
+    ;(emitln "* @param {*=} __meta ")
+    ;(emitln "* @param {*=} __extmap")
+    ;(emitln "*/")
+    (js/assign (munge t) (js/lambda fields
+      (for [fld fields]
+        (js/assign (js/dot (js/this) fld) fld))
+      (for [[pno pmask] pmasks]
+        (js/assign (symbol (str "this.cljs$lang$protocol_mask$partition" pno "$") pmask)))
+      (js/if (js/> 'arguments.length (- (count fields) 2))
+        (js/block
+          (js/assign 'this.__meta '__meta)
+          (js/assign 'this.__extmap '__extmap))
+        (js/block
+          (js/assign 'this.__meta (js/null))
+          (js/assign 'this.__extmap (js/null))))))))
 
 (defmethod transpile :dot
   [{:keys [env target field method args]}]
