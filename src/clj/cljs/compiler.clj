@@ -680,13 +680,10 @@
     (let [dot (js/dot target (munge (or field method) #{}))]
       (if field dot (js/call dot)))))
 
-(defmethod emit :js
-  [{:keys [env code segs args]}]
-  (emit-wrap env
-             (if code
-               (emits code)
-               (emits (interleave (concat segs (repeat nil))
-                                  (concat args [nil]))))))
+(defmethod transpile :js
+  [{:keys [env jsop args]}]
+  (transpile-wrap env
+    (apply (find-var (symbol "cljs.js" (str jsop))) args)))
 
 (defn forms-seq
   "Seq of forms in a Clojure or ClojureScript file."
