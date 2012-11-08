@@ -1,38 +1,62 @@
 #!/bin/sh
 
+js='out/core-advanced-test.js'
+
 rm -rf out
 mkdir -p out
 
 possible=3
 ran=0
+fail=0
 
-#bin/cljsc test >out/core-test.js
-bin/cljsc test "{:optimizations :advanced}" >out/core-advanced-test.js
+echo 'Compiling...'
+time bin/cljsc test "{:optimizations :advanced}" > $js
+if [ $? ]; then
+  echo 'Compiled.'
+else
+  echo 'Compilation FAILED!'
+  exit 1
+fi
+
+echo
+echo
 
 if [ "$V8_HOME" = "" ]; then
   echo "V8_HOME not set, skipping V8 tests"
 else
   echo "Testing with V8"
-  "${V8_HOME}/d8" out/core-advanced-test.js
-  # TODO: figure out path problem when not in advanced mode
-  # "${V8_HOME}/d8" out/core-test.js
+  time "${V8_HOME}/d8" $js || fail=$[fail+1]
   ran=$[ran+1]
 fi
+
+echo
+echo
 
 if [ "$SPIDERMONKEY_HOME" = "" ]; then
   echo "SPIDERMONKEY_HOME not set, skipping SpiderMonkey tests"
 else
   echo "Testing with SpiderMonkey"
-  ${SPIDERMONKEY_HOME}/js -m -n -a -f out/core-advanced-test.js
+  time ${SPIDERMONKEY_HOME}/js -m -n -a -f $js || fail=$[fail+1]
   ran=$[ran+1]
 fi
+
+echo
+echo
 
 if [ "$JSC_HOME" = "" ]; then
   echo "JSC_HOME not set, skipping JavaScriptCore tests"
 else
   echo "Testing with JavaScriptCore"
-  "${JSC_HOME}/jsc" -f out/core-advanced-test.js
+  time "${JSC_HOME}/jsc" -f $js || fail=$[fail+1]
   ran=$[ran+1]
 fi
 
+echo
+echo
 echo "Tested with $ran out of $possible possible js targets"
+echo
+if [ $fail ]; then
+  echo "$fail FAILED!"
+  echo
+  exit 1
+fi
