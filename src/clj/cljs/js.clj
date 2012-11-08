@@ -1,5 +1,5 @@
 (ns cljs.js
-  (:refer-clojure :exclude (name boolean empty while apply
+  (:refer-clojure :exclude (name boolean empty while apply case
                             + - * / mod > >= == <= <))
   (:import [com.google.javascript.rhino Token Node IR])
   (:import com.google.javascript.jscomp.CodePrinter$Builder))
@@ -32,7 +32,8 @@
     (call-private build)))
 
 (defn- statement? [node]
-  (clojure.core/boolean (call-private IR mayBeStatement Node node)))
+  (and (instance? Node node)
+       (clojure.core/boolean (call-private IR mayBeStatement Node node))))
 
 ;; Begin reasonable interface
 
@@ -146,6 +147,15 @@
   ([test then] (hook test then nil))
   ([test then else]
    (IR/hook (nodify test) (nodify then) (nodify else))))
+
+(defn switch [x & cases]
+  (IR/switchNode (nodify x) (into-array Node (flatten cases))))
+
+(defn case [x & body]
+  (IR/caseNode (nodify x) (block body)))
+
+(defn default [& body]
+  (IR/defaultCase (block body)))
 
 (defn throw [x]
   (IR/throwNode (nodify x)))
