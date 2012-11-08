@@ -34,7 +34,7 @@
     "volatile" "while" "with" "yield" "methods"})
 
 (def ^:dynamic *position* nil)
-(def ^:dynamic *emitted-provides* nil)
+(def ^:dynamic *provided* nil)
 (def ^:dynamic *lexical-renames* {})
 (def cljs-reserved-file-names #{"deps.cljs"})
 
@@ -107,8 +107,8 @@
   (with-out-str (emit expr)))
 
 (defn emit-provide [sym]
-  (when-not (or (nil? *emitted-provides*) (contains? @*emitted-provides* sym))
-    (swap! *emitted-provides* conj sym)
+  (when-not (or (nil? *provided*) (contains? @*provided* sym))
+    (swap! *provided* conj sym)
     (emitln "goog.provide('" (munge sym) "');")))
 
 (defn emit-source [node]
@@ -741,7 +741,7 @@
                 ana/*cljs-file* (.getPath ^java.io.File src)
                 *data-readers* tags/*cljs-data-readers*
                 *position* (atom [0 0])
-                *emitted-provides* (atom #{})]
+                *provided* (atom #{})]
         (loop [forms (forms-seq src)
                ns-name nil
                deps nil]
