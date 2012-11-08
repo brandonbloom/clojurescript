@@ -47,8 +47,6 @@
       node
       (IR/exprResult node))))
 
-(defmethod nodify :default [x] x)
-
 (defn empty []
   (IR/empty))
 
@@ -138,8 +136,10 @@
   ([test then else]
    (IR/ifNode (nodify test) (nodify then) (nodify else))))
 
-(defn hook [test then else]
-  (IR/hook (nodify test) (nodify then) (nodify else)))
+(defn hook
+  ([test then] (hook test then nil))
+  ([test then else]
+   (IR/hook (nodify test) (nodify then) (nodify else))))
 
 (defn throw [x]
   (IR/throwNode (nodify x)))
@@ -152,10 +152,10 @@
 
 (defn function [name params & body]
   (IR/function (nodify name)
-               (if (node? params)
+               (if (and (node? params) (.isParamList params))
                  params
-                 (param-list (map nodify params)))
-               (apply block body)))
+                 (param-list params))
+               (clojure.core/apply block body)))
 
 (defn lambda [params & body]
   (clojure.core/apply function (name "") params body))

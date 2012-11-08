@@ -176,7 +176,7 @@
   (emit ret))
 
 (defn transpile-block [{:keys [statements ret]}]
-  (js/block (map transpile statements) (transpile ret)))
+  (js/block (if statements statements []) ret))
 
 (defmacro emit-wrap [env & body]
   `(let [env# ~env]
@@ -192,6 +192,13 @@
     node))
 
 (defmulti transpile :op)
+
+;;TODO: This is a dirty hack being in this file
+(defmethod js/nodify :default [x]
+  (cond
+    (map? x) (transpile x)
+    (seq? x) (map js/nodify x)
+    :else x))
 
 (defmethod emit :default [ast]
   (-> ast transpile emit-source))
@@ -211,7 +218,7 @@
 (defmethod transpile :meta
   [{:keys [env expr meta]}]
   (transpile-wrap env
-    (js/call 'cljs.core.with_meta (transpile expr) (transpile meta))))
+    (js/call 'cljs.core.with_meta expr meta)))
 
 (def ^:private array-map-threshold 16)
 (def ^:private obj-map-threshold 32)
@@ -227,14 +234,14 @@
       (let [keys* (map stringify (map :form keys))]
         (js/call 'cljs.core.ObjMap.fromObject
                  (apply js/array keys*)
-                 (apply js/object (interleave keys* (map transpile vals)))))
+                 (apply js/object (interleave keys* vals))))
 
       :else
       (js/call (if (<= (count keys) array-map-threshold)
                  'cljs.core.PersistentArrayMap.fromArrays
                  'cljs.core.PersistentHashMap.fromArrays)
-               (apply js/array (map transpile keys))
-               (apply js/array (map transpile vals))))))
+               (apply js/array keys)
+               (apply js/array vals)))))
 
 (defmethod transpile :vector
   [{:keys [env items]}]
@@ -242,7 +249,7 @@
     (if (empty? items)
       (js/name 'cljs.core.PersistentVector.EMPTY)
       (js/call 'cljs.core.PersistentVector.fromArray
-               (apply js/array (map transpile items))
+               (apply js/array items)
                true))))
 
 (defmethod transpile :set
@@ -251,7 +258,7 @@
     (if (empty? items)
       (js/name 'cljs.core.PersistentHashSet.EMPTY)
       (js/call 'cljs.core.PersistentHashSet.fromArray
-               (apply js/array (map transpile items))))))
+               (apply js/array items)))))
 
 (defmethod transpile :constant
   [{:keys [env form]}]
@@ -290,15 +297,15 @@
   [{:keys [test then else env unchecked]}]
   (let [ifop (if (= :expr (:context env)) js/hook js/if)
         test* (if (not (or unchecked (safe-test? test)))
-                (js/call 'cljs.core.truth_ (transpile test))
-                (transpile test))]
+                (js/call 'cljs.core.truth_ test)
+                test)]
     (if else
-      (ifop test* (transpile then))
-      (ifop test* (transpile then) (transpile else)))))
+      (ifop test* then else)
+      (ifop test* then))))
 
 (defmethod transpile :throw
   [{:keys [throw env]}]
-  (let [throw* (js/throw (transpile throw))]
+  (let [throw* (js/throw throw)]
     (if (= :expr (:context env))
       (js/scope throw*)
       throw*)))
@@ -307,7 +314,7 @@
   [{:keys [name init env doc export]}]
   (if init
     (let [mname (munge name)
-          assign (js/assign mname (transpile init))]
+          assign (js/assign mname init)]
       (if export
         (js/comma assign
           (js/call 'goog.exportSymbol (js/string (str (munge export))) mname))
@@ -491,7 +498,7 @@
                                                       (gensym (str (:name %) "-")))
                                              bindings)))]
       (let [vars (js/block (map (fn [{:keys [init] :as binding}]
-                             (js/var (munge binding) (transpile init)))
+                             (js/var (munge binding) init))
                            bindings))
             body (transpile-block ast)
             block (if loop
@@ -506,7 +513,7 @@
   [{:keys [frame exprs env]}]
   (let [temps (vec (take (count exprs) (repeatedly gensym)))
         params (map munge (:params frame))]
-    (js/block (concat (map js/var temps (map transpile exprs))
+    (js/block (concat (map js/var temps exprs)
                       (map js/assign params temps))
               (js/continue))))
 
@@ -589,54 +596,50 @@
     (transpile-wrap env
       (cond
        opt-not?
-       (js/! (transpile (first args)))
+       (js/! (first args))
 
        proto?
        (let [pimpl (str (munge (protocol-prefix protocol))
                         (munge (name (:name info))) "$arity$" (count args))]
-         (js/apply (js/dot (transpile (first args)) (js/name pimpl))
-                   (map transpile args)))
+         (js/apply (js/dot (first args) (js/name pimpl)) args))
 
        keyword?
-       (js/apply (js/dot (js/new 'cljs.core.Keyword (transpile f)) 'call)
-                 nil (map transpile args))
+       (js/apply (js/dot (js/new 'cljs.core.Keyword f) 'call) nil args)
 
        variadic-invoke
        (let [[fixed-args variable-args] (split-at (:max-fixed-arity variadic-invoke) args)]
-         (js/apply (transpile f)
-                   (conj (mapv transpile fixed-args)
-                         (js/call 'cljs.core.array_seq
-                                  (apply js/array (map transpile variable-args)) 0))))
+         (js/apply f (conj (mapv transpile fixed-args)
+                           (js/call 'cljs.core.array_seq (apply js/array variable-args) 0))))
 
        (and js? (= (count args) 1) (unary-ops sym))
-       (apply (unary-ops sym) (map transpile args))
+       (apply (unary-ops sym) args)
 
        (and js? (= (count args) 2) (binary-ops sym))
-       (apply (binary-ops sym) (map transpile args))
+       (apply (binary-ops sym) args)
 
        (and js? (= (count args) 3) (= sym '?))
-       (apply js/hook (map transpile args))
+       (apply js/hook args)
 
        (or fn? js? goog?)
-       (js/apply (transpile f) (map transpile args))
+       (js/apply f args)
 
        :else
        (if (and ana/*cljs-static-fns* (= (:op f) :var))
-         (let [fprop (js/dot (transpile f) (js/name (str "cljs$lang$arity$" (count args))))]
+         (let [fprop (js/dot f (js/name (str "cljs$lang$arity$" (count args))))]
            (js/hook fprop
-             (js/apply fprop (map transpile args))
-             (js/apply (js/dot fprop 'call) nil (map transpile args))))
-         (js/apply (js/dot (transpile f) 'call) nil (map transpile args)))))))
+             (js/apply fprop args)
+             (js/apply (js/dot fprop 'call) nil args)))
+         (js/apply (js/dot f 'call) nil args))))))
 
 (defmethod transpile :new
   [{:keys [env ctor args]}]
   (transpile-wrap env
-    (apply js/new (transpile ctor) (map transpile args))))
+    (apply js/new ctor args)))
 
 (defmethod transpile :set!
   [{:keys [env target val]}]
   (transpile-wrap env
-    (js/assign (transpile target) (transpile val))))
+    (js/assign target val)))
 
 (defmethod transpile :ns
   [{:keys [name requires uses requires-macros]}]
@@ -695,7 +698,7 @@
 (defmethod transpile :dot
   [{:keys [env target field method args]}]
   (transpile-wrap env
-    (let [dot (js/dot (transpile target) (munge (or field method) #{}))]
+    (let [dot (js/dot target (munge (or field method) #{}))]
       (if field dot (js/call dot)))))
 
 (defmethod emit :js
