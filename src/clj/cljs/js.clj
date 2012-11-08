@@ -1,6 +1,7 @@
 (ns cljs.js
   (:refer-clojure :exclude (name boolean empty while apply case
                             + - * / mod > >= == <= <))
+  (:import java.lang.reflect.Method)
   (:import [com.google.javascript.rhino Token Node IR])
   (:import com.google.javascript.jscomp.CodePrinter$Builder))
 
@@ -16,10 +17,10 @@
 (defn- call-private* [obj method-name & argpairs]
   (let [classes (into-array Class (take-nth 2 argpairs))
         args (into-array (take-nth 2 (next argpairs)))
-        method (doto (.getDeclaredMethod
-                       (if (instance? Class obj) obj (class obj))
-                       (clojure.core/name method-name)
-                       classes)
+        method (doto ^Method (.getDeclaredMethod
+                               ^Class (if (instance? Class obj) obj (class obj))
+                               ^String (clojure.core/name method-name)
+                               #^"[Ljava.lang.Class;" classes)
                  (.setAccessible true))]
     (.invoke method obj args)))
 
@@ -40,7 +41,7 @@
 (defn node? [x]
   (instance? Node x))
 
-(defmulti nodify class)
+(defmulti ^Node nodify class)
 
 (defn statementize [x]
   (let [node (nodify x)]
@@ -134,8 +135,9 @@
                              (IR/propdef (IR/stringKey (str k)) (nodify v)))))]
     (IR/objectlit (into-array Node propdefs))))
 
-(defn block [& statements]
-  (IR/block (into-array Node (map statementize (flatten statements)))))
+(defn ^Node block [& statements]
+  (IR/block #^"[Lcom.google.javascript.rhino.Node;"
+            (into-array Node (map statementize (flatten statements)))))
 
 (defn if
   ([test then]
@@ -161,11 +163,12 @@
   (IR/throwNode (nodify x)))
 
 (defn param-list [params]
-  (IR/paramList (into-array Node (map nodify params))))
+  (IR/paramList #^"[Lcom.google.javascript.rhino.Node;"
+                (into-array Node (map nodify params))))
 
 (defn function [name params & body]
   (IR/function (nodify name)
-               (if (and (node? params) (.isParamList params))
+               (if (and (node? params) (.isParamList ^Node params))
                  params
                  (param-list params))
                (block body)))
