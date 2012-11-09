@@ -208,7 +208,7 @@
 
 (declare analyze analyze-symbol analyze-seq)
 
-(def specials '#{if def fn* do let* loop* letfn* throw try* recur new set! ns deftype* defrecord* . js* & quote})
+(def specials '#{if def fn* do let* loop* letfn* throw try* recur new set! ns deftype* defrecord* . & quote})
 
 (def ^:dynamic *recur-frames* nil)
 (def ^:dynamic *loop-lets* nil)
@@ -789,15 +789,6 @@
                        :args argexprs
                        :children (into [targetexpr] argexprs)
                        :tag (-> form meta :tag)})))))
-
-(defmethod parse 'js*
-  [op env [_ jsop & args :as form] _]
-  (assert (symbol? jsop))
-  (disallowing-recur
-   (let [enve (assoc env :context :expr)
-         argexprs (vec (map #(analyze enve %) args))]
-     {:env env :op :js :jsop jsop :args argexprs
-      :tag (-> form meta :tag) :form form :children argexprs})))
 
 (defn parse-invoke
   [env [f & args :as form]]

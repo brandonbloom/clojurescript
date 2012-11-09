@@ -1,6 +1,7 @@
 (ns cljs.js
   (:refer-clojure :exclude (name boolean empty while apply case
-                            + - * / mod > >= == <= <))
+                            + - * / mod > >= == <= <
+                            bit-and bit-or bit-not bit-xor))
   (:import java.lang.reflect.Method)
   (:import [com.google.javascript.rhino Token Node IR])
   (:import com.google.javascript.jscomp.CodePrinter$Builder))
@@ -69,6 +70,12 @@
 (defn no []
   (IR/falseNode))
 
+(defn void [x]
+  (IR/voidNode (nodify x)))
+
+(defn undefined []
+  (void 0))
+
 (defn boolean [x]
   (if x (yes) (no)))
 
@@ -109,6 +116,9 @@
 (defn dot [target prop]
   (let [prop* (if (symbol? prop) (str prop) prop)]
     (IR/getprop (nodify target) (nodify prop*))))
+
+(defn index [target element]
+  (IR/getelem (nodify target) (nodify element)))
 
 (defn name [x]
   (loop [[obj & props] (clojure.string/split (str x) #"\.")
@@ -224,6 +234,9 @@
 (defn ! [x]
   (IR/not (nodify x)))
 
+(defn bit-not [x]
+  (Node. Token/BITNOT (nodify x)))
+
 (defn +
   ([x] (IR/pos (nodify x)))
   ([x y] (IR/add (nodify x) (nodify y))))
@@ -272,14 +285,17 @@
 (defn in [x c]
   (Node. Token/IN (nodify x) (nodify c)))
 
-(defn | [x y]
-  (Node. Token/BITOR (nodify x) (nodify y)))
-
 (defn || [x y]
   (IR/or (nodify x) (nodify y)))
 
-(defn & [x y]
+(defn bit-or [x y]
+  (Node. Token/BITOR (nodify x) (nodify y)))
+
+(defn bit-and [x y]
   (Node. Token/BITAND (nodify x) (nodify y)))
+
+(defn bit-xor [x y]
+  (Node. Token/BITXOR (nodify x) (nodify y)))
 
 (defn && [x y]
   (IR/and (nodify x) (nodify y)))
@@ -292,3 +308,10 @@
 
 (defn >>> [x y]
   (Node. Token/URSH (nodify x) (nodify y)))
+
+;;TODO Unused IR methods:
+; doNode(Node body, Node cond)
+; forIn(Node target, Node cond, Node body)
+; forNode(Node init, Node cond, Node incr, Node body)
+; label(Node name, Node stmt)
+; labelName(String name)

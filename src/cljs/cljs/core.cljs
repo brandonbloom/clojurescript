@@ -38,7 +38,7 @@
 (defn truth_
   "Internal - do not use!"
   [x]
-  (js* "(~{x} != null && ~{x} !== false)"))
+  (truth_ x))
 
 (defn ^boolean identical?
   "Tests if 2 arguments are the same object"
@@ -370,7 +370,7 @@
     (.-constructor x)))
 
 (defn ^boolean instance? [t o]
-  (js* "(~{o} instanceof ~{t})"))
+  (instance? t o))
 
 ;;;;;;;;;;;;;;;;;;; protocols on primitives ;;;;;;;;
 (declare hash-map list equiv-sequential)
@@ -951,7 +951,7 @@ reduces them without incurring seq initialization"
 ;;;;;;;;;;;;;;;;;;;; js primitives ;;;;;;;;;;;;
 (defn js-obj
   ([]
-     (js* "{}"))
+     (js-obj))
   ([& keyvals]
      (apply gobject/create keyvals)))
 
@@ -961,7 +961,7 @@ reduces them without incurring seq initialization"
     keys))
 
 (defn js-delete [obj key]
-  (js* "delete ~{obj}[~{key}]"))
+  (js-delete obj key))
 
 (defn- array-copy
   ([from i to j len]
@@ -1227,7 +1227,7 @@ reduces them without incurring seq initialization"
   "If no denominators are supplied, returns 1/numerator,
   else returns numerator divided by all of the denominators."
   ([x] (/ 1 x))
-  ([x y] (js* "(~{x} / ~{y})")) ;; FIXME: waiting on cljs.core//
+  ([x y] (/ x y))
   ([x y & more] (reduce / (/ x y) more)))
 
 (defn ^boolean <
@@ -6115,7 +6115,7 @@ reduces them without incurring seq initialization"
 ;;;;;;;;;;;;;;;;;;;;;;;;; Regular Expressions ;;;;;;;;;;
 
 (defn regexp? [o]
-  (js* "~{o} instanceof RegExp"))
+  (instance? js/RegExp o))
 
 (defn re-matches
   "Returns the result of (re-find re s) if re fully matches s."

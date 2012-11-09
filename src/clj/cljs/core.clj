@@ -15,7 +15,7 @@
                             memfn ns or proxy proxy-super pvalues refer-clojure reify sync time
                             when when-first when-let when-not while with-bindings with-in-str
                             with-loading-context with-local-vars with-open with-out-str with-precision with-redefs
-                            satisfies? identical? true? false? nil? str get
+                            instance? satisfies? identical? true? false? nil? str get
 
                             aget aset
                             + - * / < <= > >= == zero? pos? neg? inc dec max min mod
@@ -173,10 +173,9 @@
       (core/inc (core/quot c 32)))))
 
 (defmacro str [& xs]
-  (let [strs (->> (repeat (count xs) "cljs.core.str(~{})")
-                  (interpose ",")
-                  (apply core/str))]
-   (concat (list 'js* (core/str "[" strs "].join('')")) xs)))
+  (let [strs (map (fn [x] `(js*/call 'cljs.core.str x)) xs)
+        array `(js*/array ~@strs)]
+    `(js*/call (js*/dot ~array 'join) "")))
 
 (defn bool-expr [e]
   (vary-meta e assoc :tag 'boolean))
@@ -186,84 +185,92 @@
 
 ;; internal - do not use.
 (defmacro coercive-not [x]
-  (bool-expr `(js/! ~x)))
+  (bool-expr `(js*/! ~x)))
 
 ;; internal - do not use.
 (defmacro coercive-not= [x y]
-  (bool-expr `(js/!= ~x ~y)))
+  (bool-expr `(js*/!= ~x ~y)))
 
 ;; internal - do not use.
 (defmacro coercive-= [x y]
-  (bool-expr `(js/== ~x ~y)))
+  (bool-expr `(js*/== ~x ~y)))
 
 (defmacro true? [x]
-  (bool-expr `(js/=== ~x true)))
+  (bool-expr `(js*/=== ~x true)))
 
 (defmacro false? [x]
-  (bool-expr `(js/=== ~x false)))
+  (bool-expr `(js*/=== ~x false)))
 
 (defmacro undefined? [x]
-  (bool-expr `(js/=== js/undefined ~x)))
+  (bool-expr `(js*/=== (js*/undefined) ~x)))
+
+(defmacro truth_
+  "Internal - do not use!"
+  [x]
+  `(js*/&& (js*/!= x nil) (js/*!== x false)))
 
 (defmacro identical? [a b]
-  (bool-expr `(js/=== ~a ~b)))
+  (bool-expr `(js*/=== ~a ~b)))
 
 (defmacro aget
   ([a i]
-     (list 'js* "(~{}[~{}])" a i))
+    `(js*/index a i))
   ([a i & idxs]
-     (let [astr (apply core/str (repeat (count idxs) "[~{}]"))]
-      `(~'js* ~(core/str "(~{}[~{}]" astr ")") ~a ~i ~@idxs))))
+    `(aget (aget ~a ~i) ~@idxs)))
 
 (defmacro aset [a i v]
-  (list 'js* "(~{}[~{}] = ~{})" a i v))
+  `(js*/assign (js*/index ~a ~i) ~v))
 
 (defmacro +
   ([] 0)
   ([x] x)
-  ([x y] `(js/+ ~x ~y))
+  ([x y] `(js*/+ ~x ~y))
   ([x y & more] `(+ (+ ~x ~y) ~@more)))
 
 (defmacro -
-  ([x] `(js/- ~x))
-  ([x y] `(js/- ~x ~y))
+  ([x] `(js*/- ~x))
+  ([x y] `(js*/- ~x ~y))
   ([x y & more] `(- (- ~x ~y) ~@more)))
 
 (defmacro *
   ([] 1)
   ([x] x)
-  ([x y] `(js/* ~x ~y))
+  ([x y] `(js*/* ~x ~y))
   ([x y & more] `(* (* ~x ~y) ~@more)))
 
 (defmacro /
   ([x] `(/ 1 ~x))
-  ([x y] (list 'js* "(~{} / ~{})" x y))
+  ([x y] `(js*/div x y))
   ([x y & more] `(/ (/ ~x ~y) ~@more)))
 
 (defmacro <
   ([x] true)
-  ([x y] (bool-expr `(js/< ~x ~y)))
+  ([x y] (bool-expr `(js*/< ~x ~y)))
   ([x y & more] `(and (< ~x ~y) (< ~y ~@more))))
 
 (defmacro <=
   ([x] true)
-  ([x y] (bool-expr `(js/<= ~x ~y)))
+  ([x y] (bool-expr `(js*/<= ~x ~y)))
   ([x y & more] `(and (<= ~x ~y) (<= ~y ~@more))))
 
 (defmacro >
   ([x] true)
-  ([x y] (bool-expr `(js/> ~x ~y)))
+  ([x y] (bool-expr `(js*/> ~x ~y)))
   ([x y & more] `(and (> ~x ~y) (> ~y ~@more))))
 
 (defmacro >=
   ([x] true)
-  ([x y] (bool-expr `(js/>= ~x ~y)))
+  ([x y] (bool-expr `(js*/>= ~x ~y)))
   ([x y & more] `(and (>= ~x ~y) (>= ~y ~@more))))
 
 (defmacro ==
   ([x] true)
-  ([x y] (bool-expr `(js/=== ~x ~y)))
+  ([x y] (bool-expr `(js*/=== ~x ~y)))
   ([x y & more] `(and (== ~x ~y) (== ~y ~@more))))
+
+(defmacro instance? [t o]
+  ;;XXX Arguments get re-ordred.
+  `(js*/instanceof o t))
 
 (defmacro dec [x]
   `(- ~x 1))
@@ -282,69 +289,69 @@
 
 (defmacro max
   ([x] x)
-  ([x y] `(js/? (js/> ~x ~y) ~x ~y))
+  ([x y] `(js*/hook (js*/> ~x ~y) ~x ~y))
   ([x y & more] `(max (max ~x ~y) ~@more)))
 
 (defmacro min
   ([x] x)
-  ([x y] `(js/? (js/< ~x ~y) ~x ~y))
+  ([x y] `(js*/hook (js*/< ~x ~y) ~x ~y))
   ([x y & more] `(min (min ~x ~y) ~@more)))
 
 (defmacro mod [num div]
-  (list 'js* "(~{} % ~{})" num div))
+  `(js*/mod ~num ~div))
 
 (defmacro bit-not [x]
-  (list 'js* "(~ ~{})" x))
+  `(js*/bit-not ~x))
 
 (defmacro bit-and
-  ([x y] `(js/& ~x ~y))
+  ([x y] `(js*/bit-and ~x ~y))
   ([x y & more] `(bit-and (bit-and ~x ~y) ~@more)))
 
 ;; internal do not use
 (defmacro unsafe-bit-and
-  ([x y] (bool-expr `(js/& ~x ~y)))
+  ([x y] (bool-expr `(js*/bit-and ~x ~y)))
   ([x y & more] `(unsafe-bit-and (unsafe-bit-and ~x ~y) ~@more)))
 
 (defmacro bit-or
-  ([x y] `(js/| ~x ~y))
+  ([x y] `(js*/bit-or ~x ~y))
   ([x y & more] `(bit-or (bit-or ~x ~y) ~@more)))
 
 (defmacro bit-xor
-  ([x y] (list 'js* "(~{} ^ ~{})" x y))
+  ([x y] `(js*/bit-xor ~x ~y))
   ([x y & more] `(bit-xor (bit-xor ~x ~y) ~@more)))
 
 (defmacro bit-and-not
-  ([x y] `(js/& ~x (bit-not ~y)))
+  ([x y] `(bit-and ~x (bit-not ~y)))
   ([x y & more] `(bit-and-not (bit-and-not ~x ~y) ~@more)))
 
-(defmacro bit-clear [x n]
-  `(js/& ~x (bit-not (js/<< 1 ~n))))
-
 (defmacro bit-flip [x n]
-  `(bit-xor ~x (js/<< 1 ~n)))
+  `(bit-xor ~x (js*/<< 1 ~n)))
 
 (defmacro bit-test [x n]
-  `(js/!= (js/& ~x (js/<< 1 ~n)) 0))
+  `(js*/!= (js/& ~x (js*/<< 1 ~n)) 0))
 
 (defmacro bit-shift-left [x n]
-  `(js/<< ~x ~n))
+  `(js*/<< ~x ~n))
 
 (defmacro bit-shift-right [x n]
-  `(js/>> ~x ~n))
+  `(js*/>> ~x ~n))
 
 (defmacro bit-shift-right-zero-fill [x n]
-  `(js/>>> ~x ~n))
+  `(js*/>>> ~x ~n))
 
 (defmacro bit-set [x n]
-  `(js/| ~x (js/<< 1 ~n)))
+  `(bit-or ~x (bit-shift-left 1 ~n)))
+
+(defmacro bit-clear [x n]
+  `(bit-and ~x (bit-not (bit-shift-left 1 ~n))))
 
 ;; internal
 (defmacro mask [hash shift]
-  `(js/& (js/>>> ~hash ~shift) 0x01f))
+  `(bit-and (bit-shift-right-zero-fill ~hash ~shift) 0x01f))
 
 ;; internal
 (defmacro bitpos [hash shift]
-  `(js/<< 1 (mask ~hash ~shift)))
+  `(js*/<< 1 (mask ~hash ~shift)))
 
 ;; internal
 (defmacro caching-hash [coll hash-fn hash-key]
@@ -414,7 +421,7 @@
         locals (keys (:locals &env))
         ns     (-> &env :ns :name)
         munge  cljs.compiler/munge
-        ns-t   (list 'js* (core/str (munge ns) "." (munge t)))]
+        ns-t   (symbol "js" (core/str (munge ns) "." (munge t)))]
     `(do
        (when (undefined? ~ns-t)
          (deftype ~t [~@locals ~meta-sym]
@@ -429,7 +436,7 @@
 (defmacro this-as
   "Defines a scope where JavaScript's implicit \"this\" is bound to the name provided."
   [name & body]
-  `(let [~name (~'js* "this")]
+  `(let [~name ~'js/this]
      ~@body))
 
 (defn to-property [sym]
@@ -723,7 +730,7 @@
                                         sigs))))]
     `(do
        (set! ~'*unchecked-if* true)
-       (def ~psym (~'js* "{}"))
+       (def ~psym (js-obj))
        ~@(map method methods)
        (set! ~'*unchecked-if* false))))
 
@@ -875,7 +882,7 @@
             (cond
              ~@(mapcat
                 (fn [[_ type name & cb]]
-                  `[(instance? ~type ~e) (let [~name ~e] ~@cb)])
+                  `[(clojure.core/instance? ~type ~e) (let [~name ~e] ~@cb)])
                 catches)
              :else (throw ~e)))
         ~@fin)
@@ -983,22 +990,16 @@
     (nth (step nil (seq seq-exprs)) 1)))
 
 (defmacro array [& rest]
-  (let [xs-str (->> (repeat "~{}")
-                    (take (count rest))
-                    (interpose ",")
-                    (apply core/str))]
-   (concat
-    (list 'js* (core/str "[" xs-str "]"))
-    rest)))
+  `(js*/array ~@rest))
 
-(defmacro js-obj [& rest]
-  (let [kvs-str (->> (repeat "~{}:~{}")
-                     (take (quot (count rest) 2))
-                     (interpose ",")
-                     (apply core/str))]
-    (concat
-     (list 'js* (core/str "{" kvs-str "}"))
-     rest)))
+(defmacro js-obj [& keyvals]
+  (->> keyvals
+    (partition 2)
+    (mapcat (fn [[k v]] [(core/str k) v]))
+    (cons 'js*/object)))
+
+(defmacro js-delete [obj key]
+  `(js*/delete (js*/index ~obj ~key)))
 
 (defmacro alength [a]
   `(.-length ~a))

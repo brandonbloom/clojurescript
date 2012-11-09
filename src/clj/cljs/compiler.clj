@@ -453,18 +453,6 @@
 (defn protocol-prefix [psym]
   (symbol (str (-> (str psym) (.replace \. \$) (.replace \/ \$)) "$")))
 
-(def unary-ops
-  {'- js/-, '+ js/+, 'delete js/delete, '! js/!}) ; omits ['~ js/bit-not]
-
-(def binary-ops
-  {'* js/*, '/ js/div, '% js/mod, '+ js/+, '- js/-,
-   '< js/<, '> js/>, '<= js/<= '>= js/>=,
-   '<< js/<<, '>> js/>>, '>>> js/>>>, '& js/&, '| js/|, '&& js/&&, '|| js/||
-   'instanceof js/instanceof, 'in js/in, '== js/==, '!= js/!=, '=== 'js/===}) ; omits ^
-
-;;TODO: xor and bitwise not
-;; mod seems wierd too... these operator symbols seems to be a failed experiment...
-
 (defmethod transpile :invoke
   [{:keys [f args env] :as expr}]
   (let [info (:info f)
@@ -481,10 +469,11 @@
                       (or (= protocol tag)
                           (when-let [ps (:protocols (ana/resolve-existing-var (dissoc env :locals) tag))]
                             (ps protocol)))))
-        opt-not? (and (= (:name info) 'cljs.core/not)
+        opt-not? (and (= nm 'cljs.core/not)
                       (= (infer-tag (first (:args expr))) 'boolean))
         ns (:ns info)
         js? (= ns 'js)
+        js*? (= ns 'js*)
         goog? (when ns
                 (or (= ns 'goog)
                     (when-let [ns-str (str ns)]
@@ -524,8 +513,8 @@
 
        proto?
        (let [pimpl (str (munge (protocol-prefix protocol))
-                        (munge (name (:name info))) "$arity$" (count args))]
-         (js/apply (js/dot (first args) (js/name pimpl)) args))
+                        (munge (name nm)) "$arity$" (count args))]
+         (js/apply (js/dot (first args) (js/string pimpl)) args))
 
        keyword?
        (js/apply (js/dot (js/new 'cljs.core.Keyword f) 'call) nil args)
@@ -535,14 +524,10 @@
          (js/apply f (conj (mapv transpile fixed-args)
                            (js/call 'cljs.core.array_seq (apply js/array variable-args) 0))))
 
-       (and js? (= (count args) 1) (unary-ops sym))
-       (apply (unary-ops sym) args)
-
-       (and js? (= (count args) 2) (binary-ops sym))
-       (apply (binary-ops sym) args)
-
-       (and js? (= (count args) 3) (= sym '?))
-       (apply js/hook args)
+       js*?
+       (if-let [jsop (find-var (symbol "cljs.js" (name nm)))]
+         (apply jsop args)
+         (throw (Error. (str "No such JavaScript AST operation " nm))))
 
        (or fn? js? goog?)
        (js/apply f args)
@@ -852,7 +837,7 @@
 (analyze (assoc envx :context :statement) '(let* [a 1 b 2] a))
 (analyze (assoc envx :context :statement) '(defprotocol P (bar [a]) (baz [b c])))
 (analyze (assoc envx :context :statement) '(. x y))
-(analyze envx '(fn foo [x] (let [x 42] (js* "~{x}['foobar']"))))
+(analyze envx '(fn foo [x] (let [x 42] (js*/index x "foobar"))))
 
 (analyze envx '(ns fred (:require [your.ns :as yn]) (:require-macros [clojure.core :as core])))
 (defmacro js [form]
@@ -952,7 +937,7 @@
            (deftype T-ype [a] P-roto (foo? [this] a))
            (foo? (new T-ype 42))))
 
-(js (def x (fn foo [x] (let [x 42] (js* "~{x}['foobar']")))))
+(js (def x (fn foo [x] (let [x 42] (js*/index x "foobar")))))
 (js (let [a 1 b 2 a b] a))
 
 (doseq [e '[nil true false 42 "fred" fred ethel my.ns/fred your.ns.fred
