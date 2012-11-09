@@ -390,7 +390,7 @@
                  (transpile-multi-arity-fn f))]
       (if loop-locals
         (transpile-wrap env
-          (js/apply (js/lambda loop-locals node) loop-locals))
+          (js/apply (js/lambda loop-locals (js/return node)) loop-locals))
         node))))
 
 (defmethod transpile :do
@@ -564,46 +564,48 @@
     []
     (do
       (swap! *provided* conj sym)
-      (js/call 'goog.provide (munge sym)))))
+      (js/call 'goog.provide (munge (str sym))))))
 
 (defmethod transpile :deftype*
   [{:keys [t fields pmasks]}]
   (let [fields (map munge fields)]
-    (provide! t)
-    ;TODO: JSType annotations
-    ;(emitln "/**")
-    ;(emitln "* @constructor")
-    ;(emitln "*/")
-    (js/assign (munge t) (js/lambda fields
-      (for [fld fields]
-        (js/assign (js/dot (js/this) fld) fld))
-      (for [[pno pmask] pmasks]
-        (js/assign (symbol (str "this.cljs$lang$protocol_mask$partition" pno "$")) pmask))))))
+    (js/block
+      (provide! t)
+      ;TODO: JSType annotations
+      ;(emitln "/**")
+      ;(emitln "* @constructor")
+      ;(emitln "*/")
+      (js/assign (munge t) (js/lambda fields
+        (for [fld fields]
+          (js/assign (js/dot (js/this) fld) fld))
+        (for [[pno pmask] pmasks]
+          (js/assign (symbol (str "this.cljs$lang$protocol_mask$partition" pno "$")) pmask)))))))
 
 (defmethod transpile :defrecord*
   [{:keys [t fields pmasks]}]
   (let [fields (concat (map munge fields) '[__meta __extmap])]
-    (provide! t)
-    ;TODO: JSType annotations
-    ;(emitln "/**")
-    ;(emitln "* @constructor")
-    ;(doseq [fld fields]
-    ;  (emitln "* @param {*} " fld))
-    ;(emitln "* @param {*=} __meta ")
-    ;(emitln "* @param {*=} __extmap")
-    ;(emitln "*/")
-    (js/assign (munge t) (js/lambda fields
-      (for [fld fields]
-        (js/assign (js/dot (js/this) fld) fld))
-      (for [[pno pmask] pmasks]
-        (js/assign (symbol (str "this.cljs$lang$protocol_mask$partition" pno "$")) pmask))
-      (js/if (js/> 'arguments.length (- (count fields) 2))
-        (js/block
-          (js/assign 'this.__meta '__meta)
-          (js/assign 'this.__extmap '__extmap))
-        (js/block
-          (js/assign 'this.__meta (js/null))
-          (js/assign 'this.__extmap (js/null))))))))
+    (js/block
+      (provide! t)
+      ;TODO: JSType annotations
+      ;(emitln "/**")
+      ;(emitln "* @constructor")
+      ;(doseq [fld fields]
+      ;  (emitln "* @param {*} " fld))
+      ;(emitln "* @param {*=} __meta ")
+      ;(emitln "* @param {*=} __extmap")
+      ;(emitln "*/")
+      (js/assign (munge t) (js/lambda fields
+        (for [fld fields]
+          (js/assign (js/dot (js/this) fld) fld))
+        (for [[pno pmask] pmasks]
+          (js/assign (symbol (str "this.cljs$lang$protocol_mask$partition" pno "$")) pmask))
+        (js/if (js/> 'arguments.length (- (count fields) 2))
+          (js/block
+            (js/assign 'this.__meta '__meta)
+            (js/assign 'this.__extmap '__extmap))
+          (js/block
+            (js/assign 'this.__meta (js/null))
+            (js/assign 'this.__extmap (js/null)))))))))
 
 (defmethod transpile :dot
   [{:keys [env target field method args]}]

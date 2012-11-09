@@ -173,9 +173,9 @@
       (core/inc (core/quot c 32)))))
 
 (defmacro str [& xs]
-  (let [strs (map (fn [x] `(js*/call 'cljs.core.str ~x)) xs)
+  (let [strs (map (fn [x] `(js*/call ~''cljs.core.str ~x)) xs)
         array `(js*/array ~@strs)]
-    `(js*/call (js*/dot ~array 'join) "")))
+    `(js*/call (js*/dot ~array "join") "")))
 
 (defn bool-expr [e]
   (vary-meta e assoc :tag 'boolean))
