@@ -95,8 +95,8 @@
   (js/string (stringify x)))
 
 (defn- wrap-meta [x node]
-  (if (meta x)
-    (js/call 'cljs.core.with_meta node (constant-node meta))
+  (if-let [m (meta x)]
+    (js/call 'cljs.core.with_meta node (constant-node m))
     node))
 
 (defmethod constant-node clojure.lang.PersistentList$EmptyList [x]
@@ -105,15 +105,15 @@
 
 (defmethod constant-node clojure.lang.PersistentList [x]
   (wrap-meta x
-    (js/apply 'cljs.core.list x)))
+    (js/apply 'cljs.core.list (map constant-node x))))
 
 (defmethod constant-node clojure.lang.Cons [x]
   (wrap-meta x
-    (js/apply 'cljs.core.list x)))
+    (js/apply 'cljs.core.list (map constant-node x))))
 
 (defmethod constant-node clojure.lang.IPersistentVector [x]
   (wrap-meta x
-    (js/call 'cljs.core.vec (apply js/array x))))
+    (js/call 'cljs.core.vec (apply js/array (map constant-node x)))))
 
 (defmethod constant-node clojure.lang.IPersistentMap [x]
   (wrap-meta x
@@ -514,7 +514,7 @@
        proto?
        (let [pimpl (str (munge (protocol-prefix protocol))
                         (munge (name nm)) "$arity$" (count args))]
-         (js/apply (js/dot (first args) (js/string pimpl)) args))
+         (js/apply (js/dot (first args) pimpl) args))
 
        keyword?
        (js/apply (js/dot (js/new 'cljs.core.Keyword f) 'call) nil args)
@@ -534,10 +534,10 @@
 
        :else
        (if (and ana/*cljs-static-fns* (= (:op f) :var))
-         (let [fprop (js/dot f (js/name (str "cljs$lang$arity$" (count args))))]
-           (js/hook fprop
-             (js/apply fprop args)
-             (js/apply (js/dot fprop 'call) nil args)))
+         (let [prop (str "cljs$lang$arity$" (count args))]
+           (js/hook (js/dot f prop)
+             (js/apply (js/dot f prop) args)
+             (js/apply (js/dot (js/dot f prop) 'call) nil args)))
          (js/apply (js/dot f 'call) nil args))))))
 
 (defmethod transpile :new
@@ -596,7 +596,7 @@
       (for [fld fields]
         (js/assign (js/dot (js/this) fld) fld))
       (for [[pno pmask] pmasks]
-        (js/assign (symbol (str "this.cljs$lang$protocol_mask$partition" pno "$") pmask)))
+        (js/assign (symbol (str "this.cljs$lang$protocol_mask$partition" pno "$")) pmask))
       (js/if (js/> 'arguments.length (- (count fields) 2))
         (js/block
           (js/assign 'this.__meta '__meta)
