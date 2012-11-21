@@ -128,6 +128,9 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;; core protocols ;;;;;;;;;;;;;
 
+(defprotocol Fn
+  "Marker protocol")
+
 (defprotocol IFn
   (-invoke
     [this]
@@ -455,6 +458,30 @@
   IHash
   (-hash [o]
     (if (identical? o true) 1 0)))
+
+(deftype Function [meta wrapped]
+  Fn
+
+  IFn
+  (-invoke [_ & args]
+    (apply wrapped args))
+
+  IMeta
+  (-meta [_] meta)
+
+  IWithMeta
+  (-with-meta [_ meta]
+    (Function. meta wrapped)))
+
+(extend-type function
+  Fn
+
+  IMeta
+  (-meta [_] nil)
+
+  IWithMeta
+  (-with-meta [f meta]
+    (Function. meta f)))
 
 (extend-type default
   IHash
@@ -1026,7 +1053,7 @@ reduces them without incurring seq initialization"
   (goog/isNumber n))
 
 (defn ^boolean fn? [f]
-  (goog/isFunction f))
+  (satisfies? Fn f))
 
 (defn ^boolean ifn? [f]
   (or (fn? f) (satisfies? IFn f)))
