@@ -221,16 +221,6 @@
                (keyword (-> env :ns :name name) (name sym))
                sym)})
 
-(defn analyze-block
-  "returns {:statements .. :ret ..}"
-  [env exprs]
-  (let [statements (disallowing-recur
-                     (seq (map #(analyze (assoc env :context :statement) %) (butlast exprs))))
-        ret (if (<= (count exprs) 1)
-              (analyze env (first exprs))
-              (analyze (assoc env :context (if (= :statement (:context env)) :statement :return)) (last exprs)))]
-    {:statements statements :ret ret}))
-
 (defmulti parse (fn [op & rest] op))
 
 (defmethod parse 'if
@@ -250,9 +240,6 @@
     {:env env :op :throw :form form
      :throw throw-expr
      :children [throw-expr]}))
-
-(defn- block-children [{:keys [statements ret] :as block}]
-  (when block (conj (vec statements) ret)))
 
 (defmethod parse 'try*
   [op env [_ & body :as form] name]
@@ -283,8 +270,7 @@
      :finally finally
      :name name
      :catch catch
-     :children (vec (mapcat block-children
-                            [try catch finally]))}))
+     :children [try catch finally]}))
 
 (defmethod parse 'def
   [op env form name]
@@ -421,8 +407,7 @@
      :max-fixed-arity max-fixed-arity
      :protocol-impl protocol-impl
      :protocol-inline protocol-inline
-     :children (vec (mapcat block-children
-                            methods))}))
+     :children (mapv :expr methods)}))
 
 (defmethod parse 'letfn*
   [op env [_ bindings & exprs :as form] name]
@@ -450,8 +435,14 @@
 
 (defmethod parse 'do
   [op env [_ & exprs :as form] _]
-  (let [block (analyze-block env exprs)]
-    (merge {:env env :op :do :form form :children (block-children block)} block)))
+  (let [statements (disallowing-recur
+                     (seq (map #(analyze (assoc env :context :statement) %) (butlast exprs))))
+        ret (if (<= (count exprs) 1)
+              (analyze env (first exprs))
+              (analyze (assoc env :context (if (= :statement (:context env)) :statement :return)) (last exprs)))]
+    {:env env :op :do :form form
+     :statements statements :ret ret
+     :children (conj (vec statements) ret)}))
 
 (defn analyze-let
   [encl-env [_ bindings & exprs :as form] is-loop]

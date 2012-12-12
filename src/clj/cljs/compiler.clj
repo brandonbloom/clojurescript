@@ -206,12 +206,6 @@
             (comma-sep (map #(fn [] (emit-constant %)) x))
             ["])"])))
 
-(defn emit-block
-  [context statements ret]
-  (when statements
-    (emits statements))
-  (emit ret))
-
 (defmacro emit-wrap [env & body]
   `(let [env# ~env]
      (when (= :return (:context env#)) (emits "return "))
@@ -514,7 +508,9 @@
   [{:keys [statements ret env]}]
   (let [context (:context env)]
     (when (and statements (= :expr context)) (emits "(function (){"))
-    (emit-block context statements ret)
+    (when statements
+      (emits statements))
+    (emit ret)
     (when (and statements (= :expr context)) (emits "})()"))))
 
 (defmethod emit :try*
