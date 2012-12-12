@@ -262,9 +262,7 @@
         fblock (when (and (seq? tail) (= 'finally (first tail)))
                   (rest tail))
         finally (when fblock
-                  (analyze-block
-                   (assoc env :context :statement)
-                   fblock))
+                  (analyze (assoc env :context :statement) `(do ~@fblock)))
         body (if finally (pop body) body)
         tail (peek body)
         cblock (when (and (seq? tail)
@@ -276,10 +274,9 @@
                  (assoc locals name {:name name})
                  locals)
         catch (when cblock
-                (analyze-block (assoc catchenv :locals locals) (rest cblock)))
+                (analyze (assoc catchenv :locals locals) `(do ~@(rest cblock))))
         body (if name (pop body) body)
-        try (when body
-              (analyze-block (if (or name finally) catchenv env) body))]
+        try (analyze (if (or name finally) catchenv env) `(do ~@body))]
     (when name (assert (not (namespace name)) "Can't qualify symbol in catch"))
     {:env env :op :try* :form form
      :try try
