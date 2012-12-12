@@ -444,11 +444,9 @@
                         (let [env (assoc-in meth-env [:locals name] shadow)]
                           (assoc be :init (analyze env (n->fexpr name)))))
                       bes))
-        {:keys [statements ret]}
-        (analyze-block (assoc meth-env :context (if (= :expr context) :return context)) exprs)]
-    {:env env :op :letfn :bindings bes :statements statements :ret ret :form form
-     :children (into (vec (map :init bes))
-                     (conj (vec statements) ret))}))
+        expr (analyze (assoc meth-env :context (if (= :expr context) :return context)) `(do ~@exprs))]
+    {:env env :op :letfn :bindings bes :expr expr :form form
+     :children (conj (vec (map :init bes)) expr)}))
 
 (defmethod parse 'do
   [op env [_ & exprs :as form] _]

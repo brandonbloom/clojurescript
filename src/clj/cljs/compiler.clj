@@ -571,12 +571,12 @@
     (emitln "}")))
 
 (defmethod emit :letfn
-  [{:keys [bindings statements ret env]}]
+  [{:keys [bindings expr env]}]
   (let [context (:context env)]
     (when (= :expr context) (emits "(function (){"))
     (doseq [{:keys [init] :as binding} bindings]
       (emitln "var " (munge binding) " = " init ";"))
-    (emit-block (if (= :expr context) :return context) statements ret)
+    (emits expr)
     (when (= :expr context) (emits "})()"))))
 
 (defn protocol-prefix [psym]
