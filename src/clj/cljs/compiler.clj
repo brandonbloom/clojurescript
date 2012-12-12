@@ -388,20 +388,20 @@
     (emits "})")))
 
 (defn emit-fn-method
-  [{:keys [type name variadic params statements ret env recurs max-fixed-arity]}]
+  [{:keys [type name variadic params expr env recurs max-fixed-arity]}]
   (emit-wrap env
              (emitln "(function " (munge name) "(" (comma-sep (map munge params)) "){")
              (when type
                (emitln "var self__ = this;"))
              (when recurs (emitln "while(true){"))
-             (emit-block :return statements ret)
+             (emits expr)
              (when recurs
                (emitln "break;")
                (emitln "}"))
              (emits "})")))
 
 (defn emit-variadic-fn-method
-  [{:keys [type name variadic params statements ret env recurs max-fixed-arity] :as f}]
+  [{:keys [type name variadic params expr env recurs max-fixed-arity] :as f}]
   (emit-wrap env
              (let [name (or name (gensym))
                    mname (munge name)
@@ -410,7 +410,7 @@
                (emitln "(function() { ")
                (emitln "var " delegate-name " = function (" (comma-sep params) "){")
                (when recurs (emitln "while(true){"))
-               (emit-block :return statements ret)
+               (emits expr)
                (when recurs
                  (emitln "break;")
                  (emitln "}"))
@@ -514,9 +514,7 @@
   [{:keys [statements ret env]}]
   (let [context (:context env)]
     (when (and statements (= :expr context)) (emits "(function (){"))
-    ;(when statements (emitln "{"))
     (emit-block context statements ret)
-    ;(when statements (emits "}"))
     (when (and statements (= :expr context)) (emits "})()"))))
 
 (defmethod emit :try*

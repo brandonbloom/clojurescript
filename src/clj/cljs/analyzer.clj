@@ -368,11 +368,10 @@
                                 [locals []] param-names)
         fixed-arity (count (if variadic (butlast params) params))
         recur-frame {:params params :flag (atom nil)}
-        block (binding [*recur-frames* (cons recur-frame *recur-frames*)]
-                (analyze-block (assoc env :context :return :locals locals) body))]
-    (merge {:env env :variadic variadic :params params :max-fixed-arity fixed-arity
-            :type type :form form :recurs @(:flag recur-frame)}
-           block)))
+        expr (binding [*recur-frames* (cons recur-frame *recur-frames*)]
+               (analyze (assoc env :context :return :locals locals) `(do ~@body)))]
+    {:env env :variadic variadic :params params :max-fixed-arity fixed-arity
+     :type type :form form :recurs @(:flag recur-frame) :expr expr}))
 
 (defmethod parse 'fn*
   [op env [_ & args :as form] name]
