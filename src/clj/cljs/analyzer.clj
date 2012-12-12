@@ -485,16 +485,15 @@
                         (next bindings))))
              [bes env])))
         recur-frame (when is-loop {:params bes :flag (atom nil)})
-        {:keys [statements ret]}
+        expr
         (binding [*recur-frames* (if recur-frame (cons recur-frame *recur-frames*) *recur-frames*)
                   *loop-lets* (cond
                                is-loop (or *loop-lets* ())
                                *loop-lets* (cons {:params bes} *loop-lets*))]
-          (analyze-block (assoc env :context (if (= :expr context) :return context)) exprs))]
+          (analyze (assoc env :context (if (= :expr context) :return context)) `(do ~@exprs)))]
     {:env encl-env :op (if is-loop :loop :let)
-     :bindings bes :statements statements :ret ret :form form
-     :children (into (vec (map :init bes))
-                     (conj (vec statements) ret))}))
+     :bindings bes :expr expr :form form
+     :children (conj (vec (map :init bes)) expr)}))
 
 (defmethod parse 'let*
   [op encl-env form _]

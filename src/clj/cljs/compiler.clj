@@ -535,7 +535,7 @@
       (emits try))))
 
 (defn emit-let
-  [{:keys [bindings statements ret env]} is-loop]
+  [{:keys [bindings expr env]} is-loop]
   (let [context (:context env)]
     (when (= :expr context) (emits "(function (){"))
     (binding [*lexical-renames* (into *lexical-renames*
@@ -546,7 +546,7 @@
       (doseq [{:keys [init] :as binding} bindings]
         (emitln "var " (munge binding) " = " init ";"))
       (when is-loop (emitln "while(true){"))
-      (emit-block (if (= :expr context) :return context) statements ret)
+      (emits expr)
       (when is-loop
         (emitln "break;")
         (emitln "}")))
