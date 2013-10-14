@@ -1088,6 +1088,12 @@
          :meta meta-expr :expr expr :children [meta-expr expr]})
       expr)))
 
+(defn annotate-constant [{:keys [op form children] :as ast}]
+  (if (or (= op :constant)
+          (and (coll? form) (every? :constant? children)))
+    (assoc ast :constant? true)
+    ast))
+
 (defn analyze
   "Given an environment, a map containing {:locals (mapping of names to bindings), :context
   (one of :statement, :expr, :return), :ns (a symbol naming the
@@ -1102,15 +1108,16 @@
                   (or (seq form) ())
                   form)]
        (load-core)
-       (cond
-        (symbol? form) (analyze-symbol env form)
-        (and (seq? form) (seq form)) (analyze-seq env form name)
-        (map? form) (analyze-map env form)
-        (vector? form) (analyze-vector env form)
-        (set? form) (analyze-set env form)
-        (keyword? form) (analyze-keyword env form)
-        (= form ()) (analyze-list env form)
-        :else {:op :constant :env env :form form})))))
+       (annotate-constant
+         (cond
+          (symbol? form) (analyze-symbol env form)
+          (and (seq? form) (seq form)) (analyze-seq env form name)
+          (map? form) (analyze-map env form)
+          (vector? form) (analyze-vector env form)
+          (set? form) (analyze-set env form)
+          (keyword? form) (analyze-keyword env form)
+          (= form ()) (analyze-list env form)
+          :else {:op :constant :env env :form form}))))))
 
 (defn forms-seq
   "Seq of forms in a Clojure or ClojureScript file."
